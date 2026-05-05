@@ -1,7 +1,7 @@
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const config = require('../config/app');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const path = require('path');
 
 const s3Client = new S3Client({
@@ -19,7 +19,7 @@ const s3Client = new S3Client({
  */
 const uploadToS3 = async (fileBuffer, originalName, folder = 'avatars') => {
   const ext = path.extname(originalName);
-  const key = `${folder}/${uuidv4()}${ext}`;
+  const key = `${folder}/${crypto.randomUUID()}${ext}`;
 
   const command = new PutObjectCommand({
     Bucket: config.aws.s3Bucket,

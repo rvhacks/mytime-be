@@ -1,6 +1,7 @@
 'use strict';
 const bcrypt = require('bcryptjs');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const uuidv4 = () => crypto.randomUUID();
 
 // Pre-defined UUIDs for stable references
 const DES_SE = uuidv4(), DES_SSE = uuidv4(), DES_TL = uuidv4(), DES_PM = uuidv4(), DES_QA = uuidv4(), DES_BA = uuidv4();
