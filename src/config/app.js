@@ -10,7 +10,9 @@ module.exports = {
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
   },
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173').includes(',')
+      ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
+      : process.env.CORS_ORIGIN || 'http://localhost:5173',
   },
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
