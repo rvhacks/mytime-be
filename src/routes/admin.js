@@ -9,10 +9,14 @@ const {
 } = require('../validators/admin');
 
 router.use(authenticate);
-router.use(authorize('admin'));
 
-// Dashboard stats
+// ---- Accessible by ALL authenticated roles ----
 router.get('/dashboard/stats', adminController.getDashboardStats);
+router.get('/dashboard/activity', adminController.getRecentActivity);
+router.get('/role-constants', adminController.getRoleConstants);
+
+// ---- Admin-only routes below ----
+router.use(authorize('admin'));
 
 // Designations
 router.get('/designations', adminController.getDesignations);

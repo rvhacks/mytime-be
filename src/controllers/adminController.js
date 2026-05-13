@@ -122,3 +122,17 @@ exports.getDashboardStats = catchAsync(async (req, res) => {
   const data = await adminService.getDashboardStats();
   res.json({ status: 'success', data });
 });
+
+// ---- RECENT ACTIVITY (DB-driven) ----
+exports.getRecentActivity = catchAsync(async (req, res) => {
+  const isAdmin = req.user.role === 'admin';
+  const userId = isAdmin ? null : req.user.id;
+  const data = await adminService.getRecentActivity(userId);
+  res.json({ status: 'success', data });
+});
+
+// ---- ROLE CONSTANTS ----
+exports.getRoleConstants = catchAsync(async (req, res) => {
+  const { PROJECT_ROLES } = require('../constants');
+  res.json({ status: 'success', data: PROJECT_ROLES });
+});

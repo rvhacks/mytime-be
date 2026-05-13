@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const { PROJECT_ROLE_KEYS } = require('../constants');
 
 const createDesignationSchema = Joi.object({
   name: Joi.string().min(2).max(200).required(),
@@ -30,13 +31,13 @@ const createProjectSchema = Joi.object({
 const createAssignmentSchema = Joi.object({
   userId: Joi.string().uuid().required(),
   projectId: Joi.string().uuid().required(),
-  role: Joi.string().valid('IC', 'MS', 'TPM', 'PM', 'QA', 'BA').required(),
+  role: Joi.string().valid(...PROJECT_ROLE_KEYS).required(),
 });
 
 const createMilestoneSchema = Joi.object({
   name: Joi.string().min(1).max(255).required(),
   description: Joi.string().optional().allow('', null),
-  role: Joi.string().valid('IC', 'MS', 'TPM', 'PM', 'QA', 'BA').required(),
+  role: Joi.string().valid(...PROJECT_ROLE_KEYS).required(),
 });
 
 module.exports = {

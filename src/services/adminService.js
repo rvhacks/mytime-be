@@ -278,6 +278,25 @@ class AdminService {
       pendingApprovals,
     };
   }
+  // ---- RECENT ACTIVITY (DB-driven from notifications) ----
+  async getRecentActivity(userId) {
+    const { Notification } = require('../infrastructure/models');
+    const where = userId ? { user_id: userId } : {};
+    const activities = await Notification.findAll({
+      where,
+      order: [['created_at', 'DESC']],
+      limit: 10,
+      raw: true,
+    });
+    return activities.map((n) => ({
+      id: n.id,
+      action: n.title,
+      description: n.message,
+      timestamp: n.created_at,
+      type: n.type || 'info',
+      category: n.category || 'general',
+    }));
+  }
 }
 
 module.exports = new AdminService();
