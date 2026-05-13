@@ -1,32 +1,33 @@
 const express = require('express');
 const router = express.Router();
-const timesheetController = require('../controllers/timesheetController');
+const tc = require('../controllers/timesheetController');
 const { authenticate, authorize } = require('../middlewares/auth');
-const { validate } = require('../middlewares/validate');
-const { saveTimesheetSchema, submitTimesheetSchema, approvalActionSchema } = require('../validators/timesheet');
 
 router.use(authenticate);
 
-// Employee timesheet
-router.get('/my', timesheetController.getMyTimesheets);
-router.get('/week', timesheetController.getMyTimesheet);
-router.get('/assigned-projects', timesheetController.getMyAssignedProjects);
-router.post('/save', validate(saveTimesheetSchema), timesheetController.saveTimesheet);
-router.post('/submit', validate(submitTimesheetSchema), timesheetController.submitTimesheet);
-router.post('/recall/:id', timesheetController.recallTimesheet);
-router.get('/detail/:id', timesheetController.getTimesheetDetail);
+// ---- Employee timesheet ----
+router.get('/my', tc.getMyTimesheets);
+router.get('/week', tc.getMyTimesheet);
+router.get('/assigned-projects', tc.getMyAssignedProjects);
+router.post('/save', tc.saveEntries);             // save draft rows
+router.post('/submit', tc.submitEntries);           // submit specific entry IDs
+router.post('/recall', tc.recallEntries);           // recall specific entry IDs
+router.get('/detail/:id', tc.getTimesheetDetail);
 
-// Milestones by role (for timesheet dropdown filtering)
-router.get('/milestones/role/:role', timesheetController.getMilestonesByRole);
+// Milestones by role
+router.get('/milestones/role/:role', tc.getMilestonesByRole);
 
-// Manager approvals
-router.get('/approvals', authorize('manager', 'admin'), timesheetController.getPendingApprovals);
-router.post('/approvals/action', authorize('manager', 'admin'), validate(approvalActionSchema), timesheetController.approvalAction);
+// Project detail (for employee My Projects)
+router.get('/project/:projectId', tc.getProjectDetail);
 
-// Admin: view employee timesheets
-router.get('/employee/:employeeId', authorize('admin'), timesheetController.getEmployeeTimesheets);
+// ---- Manager approvals (dynamic isManager check) ----
+router.get('/approvals', authorize('manager', 'admin'), tc.getPendingApprovals);
+router.post('/approvals/action', authorize('manager', 'admin'), tc.approvalAction);
 
-// Reports
-router.get('/reports', timesheetController.getReports);
+// ---- Admin: view employee timesheets ----
+router.get('/employee/:employeeId', authorize('admin'), tc.getEmployeeTimesheets);
+
+// ---- Reports ----
+router.get('/reports', tc.getReports);
 
 module.exports = router;

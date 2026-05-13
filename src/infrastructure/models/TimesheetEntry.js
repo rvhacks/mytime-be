@@ -34,11 +34,34 @@ module.exports = (sequelize) => {
     hours_fri: { type: DataTypes.DECIMAL(4, 2), defaultValue: 0 },
     hours_sat: { type: DataTypes.DECIMAL(4, 2), defaultValue: 0 },
     hours_sun: { type: DataTypes.DECIMAL(4, 2), defaultValue: 0 },
+    // ---- Per-entry workflow state ----
+    status: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'draft',
+      // Valid: draft, submitted, recalled, approved, rejected
+    },
+    submitted_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    reviewed_by: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
+    reviewed_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    review_comments: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
   }, {
     tableName: 'timesheet_entries',
     indexes: [
       { fields: ['timesheet_id'] },
       { fields: ['project_id'] },
+      { fields: ['status'] },
     ],
   });
 

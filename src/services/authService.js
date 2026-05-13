@@ -19,7 +19,14 @@ class AuthService {
     const refreshToken = generateRefreshToken({ id: user.id });
 
     const userData = await userRepository.findById(user.id);
-    return { token, refreshToken, user: userData };
+
+    // Dynamic manager check
+    const directReportCount = await User.count({
+      where: { reporting_manager_id: user.id, status: 'active' },
+    });
+
+    const userJson = userData.toJSON ? userData.toJSON() : userData;
+    return { token, refreshToken, user: { ...userJson, isManager: directReportCount > 0 } };
   }
 
   async forgotPassword(email) {

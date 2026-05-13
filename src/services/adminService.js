@@ -218,8 +218,8 @@ class AdminService {
   }
 
   // ---- DASHBOARD STATS ----
-  async getDashboardStats() {
-    const { Timesheet, TimesheetEntry, User, Project, ProjectAssignment } = require('../infrastructure/models');
+  async getDashboardStats(requestingUserId) {
+    const { TimesheetEntry, Timesheet, User, Project } = require('../infrastructure/models');
     const { Op, fn, col, literal } = require('sequelize');
 
     const now = new Date();
@@ -232,28 +232,30 @@ class AdminService {
     // Active projects
     const activeProjects = await Project.count({ where: { status: 'active' } });
 
-    // Total hours logged (last 30 days) — EXCLUDE drafts
+    // Entry-level stats — EXCLUDE drafts
     const nonDraftStatuses = ['submitted', 'approved', 'rejected'];
-    const hoursResult = await Timesheet.findAll({
-      where: {
-        week_start_date: { [Op.gte]: thirtyDaysAgo },
-        status: { [Op.in]: nonDraftStatuses },
-      },
-      attributes: [[fn('COALESCE', fn('SUM', col('total_hours')), 0), 'totalHours']],
+
+    // Total hours logged (last 30 days)
+    const totalResult = await TimesheetEntry.findAll({
+      where: { status: { [Op.in]: nonDraftStatuses } },
+      include: [{
+        model: Timesheet, as: 'timesheet',
+        where: { week_start_date: { [Op.gte]: thirtyDaysAgo } },
+        attributes: [],
+      }],
+      attributes: [
+        [literal('COALESCE(SUM(hours_mon + hours_tue + hours_wed + hours_thu + hours_fri + hours_sat + hours_sun), 0)'), 'totalHours'],
+      ],
       raw: true,
     });
-    const totalHoursLogged = parseFloat(hoursResult[0]?.totalHours || 0);
+    const totalHoursLogged = parseFloat(totalResult[0]?.totalHours || 0);
 
-    // Billable hours (last 30 days) — EXCLUDE drafts
+    // Billable hours
     const billableResult = await TimesheetEntry.findAll({
-      where: { billable: true },
+      where: { status: { [Op.in]: nonDraftStatuses }, billable: true },
       include: [{
-        model: Timesheet,
-        as: 'timesheet',
-        where: {
-          week_start_date: { [Op.gte]: thirtyDaysAgo },
-          status: { [Op.in]: nonDraftStatuses },
-        },
+        model: Timesheet, as: 'timesheet',
+        where: { week_start_date: { [Op.gte]: thirtyDaysAgo } },
         attributes: [],
       }],
       attributes: [
@@ -263,16 +265,12 @@ class AdminService {
     });
     const billableHours = parseFloat(billableResult[0]?.billableHours || 0);
 
-    // Non-billable hours (last 30 days) — EXCLUDE drafts
+    // Non-billable
     const nonBillableResult = await TimesheetEntry.findAll({
-      where: { billable: false },
+      where: { status: { [Op.in]: nonDraftStatuses }, billable: false },
       include: [{
-        model: Timesheet,
-        as: 'timesheet',
-        where: {
-          week_start_date: { [Op.gte]: thirtyDaysAgo },
-          status: { [Op.in]: nonDraftStatuses },
-        },
+        model: Timesheet, as: 'timesheet',
+        where: { week_start_date: { [Op.gte]: thirtyDaysAgo } },
         attributes: [],
       }],
       attributes: [
@@ -282,17 +280,27 @@ class AdminService {
     });
     const nonBillableHours = parseFloat(nonBillableResult[0]?.nonBillableHours || 0);
 
-    // Approval rate (last 30 days)
-    const totalTimesheets = await Timesheet.count({
-      where: { week_start_date: { [Op.gte]: thirtyDaysAgo }, status: { [Op.ne]: 'draft' } },
+    // Approval rate (entry-level)
+    const totalEntries = await TimesheetEntry.count({
+      where: { status: { [Op.in]: nonDraftStatuses } },
+      include: [{
+        model: Timesheet, as: 'timesheet',
+        where: { week_start_date: { [Op.gte]: thirtyDaysAgo } },
+        attributes: [],
+      }],
     });
-    const approvedTimesheets = await Timesheet.count({
-      where: { week_start_date: { [Op.gte]: thirtyDaysAgo }, status: 'approved' },
+    const approvedEntries = await TimesheetEntry.count({
+      where: { status: 'approved' },
+      include: [{
+        model: Timesheet, as: 'timesheet',
+        where: { week_start_date: { [Op.gte]: thirtyDaysAgo } },
+        attributes: [],
+      }],
     });
-    const approvalRate = totalTimesheets > 0 ? Math.round((approvedTimesheets / totalTimesheets) * 100) : 0;
+    const approvalRate = totalEntries > 0 ? Math.round((approvedEntries / totalEntries) * 100) : 0;
 
-    // Pending approvals count
-    const pendingApprovals = await Timesheet.count({ where: { status: 'submitted' } });
+    // Pending approvals (submitted entries)
+    const pendingApprovals = await TimesheetEntry.count({ where: { status: 'submitted' } });
 
     return {
       totalEmployees,
@@ -304,25 +312,40 @@ class AdminService {
       pendingApprovals,
     };
   }
+
   // ---- RECENT ACTIVITY (DB-driven from notifications) ----
-  async getRecentActivity(userId) {
-    const { Notification } = require('../infrastructure/models');
-    const where = userId ? { user_id: userId } : {};
+  async getRecentActivity(userId, isAdmin = false) {
+    const { Notification, User } = require('../infrastructure/models');
+    // Admin: show all notifications (global activity)
+    // Employee: show only their own
+    const where = isAdmin ? {} : { user_id: userId };
     const activities = await Notification.findAll({
       where,
+      include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name'] }],
       order: [['created_at', 'DESC']],
-      limit: 10,
-      raw: true,
+      limit: 15,
+      raw: false,
     });
-    return activities.map((n) => ({
-      id: n.id,
-      action: n.title,
-      description: n.message,
-      timestamp: n.created_at,
-      type: n.type || 'info',
-      category: n.category || 'general',
-    }));
+    return activities.map((n) => {
+      const userName = n.user ? `${n.user.first_name} ${n.user.last_name}` : 'Unknown';
+      // For admin view, prefix with employee name instead of "You"
+      let description = n.message;
+      if (isAdmin && n.user) {
+        description = description.replace(/^Your?\s/i, `${userName}'s `);
+      }
+
+      return {
+        id: n.id,
+        action: n.title,
+        description,
+        // Ensure valid ISO timestamp
+        timestamp: n.created_at ? new Date(n.created_at).toISOString() : new Date().toISOString(),
+        type: n.type || 'info',
+        category: n.category || 'general',
+      };
+    });
   }
 }
 
 module.exports = new AdminService();
+

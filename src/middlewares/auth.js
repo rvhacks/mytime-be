@@ -3,7 +3,8 @@ const AppError = require('../utils/AppError');
 const { User } = require('../infrastructure/models');
 
 /**
- * Authenticate JWT from Authorization header
+ * Authenticate JWT from Authorization header.
+ * Also injects `req.user.isManager` dynamically based on reporting hierarchy.
  */
 const authenticate = async (req, res, next) => {
   try {
@@ -23,7 +24,13 @@ const authenticate = async (req, res, next) => {
       throw new AppError('User not found or inactive', 401);
     }
 
+    // Dynamic manager check: does anyone report to this user?
+    const directReportCount = await User.count({
+      where: { reporting_manager_id: user.id, status: 'active' },
+    });
+
     req.user = user;
+    req.user.isManager = directReportCount > 0;
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
@@ -34,11 +41,22 @@ const authenticate = async (req, res, next) => {
 };
 
 /**
- * Authorize by role(s)
+ * Authorize by role(s).
+ * Supports 'manager' as a dynamic pseudo-role (checks isManager flag).
  */
 const authorize = (...roles) => {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user) {
+      return next(new AppError('Authentication required', 401));
+    }
+
+    // Check static role match OR dynamic manager
+    const hasRole = roles.some((role) => {
+      if (role === 'manager') return req.user.isManager;
+      return req.user.role === role;
+    });
+
+    if (!hasRole) {
       return next(new AppError('Insufficient permissions', 403));
     }
     next();

@@ -45,14 +45,11 @@ ProjectAssignment.belongsTo(Project, { foreignKey: 'project_id', as: 'project' }
 User.hasMany(ProjectAssignment, { foreignKey: 'user_id', as: 'assignments' });
 ProjectAssignment.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
-// Timesheets
+// Timesheets (week container — no status, just a grouping envelope)
 User.hasMany(Timesheet, { foreignKey: 'user_id', as: 'timesheets' });
 Timesheet.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
-User.hasMany(Timesheet, { foreignKey: 'reviewed_by', as: 'reviewedTimesheets' });
-Timesheet.belongsTo(User, { foreignKey: 'reviewed_by', as: 'reviewer' });
-
-// Timesheet entries
+// Timesheet entries (each entry has its own lifecycle)
 Timesheet.hasMany(TimesheetEntry, { foreignKey: 'timesheet_id', as: 'entries' });
 TimesheetEntry.belongsTo(Timesheet, { foreignKey: 'timesheet_id', as: 'timesheet' });
 
@@ -61,6 +58,10 @@ TimesheetEntry.belongsTo(Project, { foreignKey: 'project_id', as: 'project' });
 
 Milestone.hasMany(TimesheetEntry, { foreignKey: 'milestone_id', as: 'timesheetEntries' });
 TimesheetEntry.belongsTo(Milestone, { foreignKey: 'milestone_id', as: 'milestone' });
+
+// Entry reviewer
+User.hasMany(TimesheetEntry, { foreignKey: 'reviewed_by', as: 'reviewedEntries' });
+TimesheetEntry.belongsTo(User, { foreignKey: 'reviewed_by', as: 'reviewer' });
 
 // OTP
 User.hasMany(Otp, { foreignKey: 'user_id', as: 'otps' });

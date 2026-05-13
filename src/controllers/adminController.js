@@ -119,15 +119,14 @@ exports.deleteMilestone = catchAsync(async (req, res) => {
 
 // ---- DASHBOARD STATS ----
 exports.getDashboardStats = catchAsync(async (req, res) => {
-  const data = await adminService.getDashboardStats();
+  const data = await adminService.getDashboardStats(req.user.id);
   res.json({ status: 'success', data });
 });
 
 // ---- RECENT ACTIVITY (DB-driven) ----
 exports.getRecentActivity = catchAsync(async (req, res) => {
   const isAdmin = req.user.role === 'admin';
-  const userId = isAdmin ? null : req.user.id;
-  const data = await adminService.getRecentActivity(userId);
+  const data = await adminService.getRecentActivity(req.user.id, isAdmin);
   res.json({ status: 'success', data });
 });
 

@@ -33,7 +33,7 @@ module.exports = (sequelize) => {
       allowNull: true,
     },
     role: {
-      type: DataTypes.ENUM('admin', 'manager', 'employee'),
+      type: DataTypes.STRING(20), // 'admin' | 'employee' — manager is dynamic
       defaultValue: 'employee',
     },
     designation_id: {
@@ -48,6 +48,10 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING(500),
       allowNull: true,
     },
+    avatar_path: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+    },
     joining_date: {
       type: DataTypes.DATEONLY,
       allowNull: true,
@@ -57,7 +61,7 @@ module.exports = (sequelize) => {
       allowNull: true,
     },
     status: {
-      type: DataTypes.ENUM('active', 'inactive'),
+      type: DataTypes.STRING(10),
       defaultValue: 'active',
     },
   }, {

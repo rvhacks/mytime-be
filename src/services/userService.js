@@ -1,20 +1,34 @@
 const userRepository = require('../repositories/userRepository');
 const AppError = require('../utils/AppError');
-const { uploadToS3, getSignedS3Url, deleteFromS3 } = require('../utils/s3');
 const { User } = require('../infrastructure/models');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+// Ensure upload directory exists
+const UPLOAD_DIR = path.join(__dirname, '../../uploads/avatars');
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
 
 class UserService {
   async getProfile(userId) {
     const user = await userRepository.findById(userId);
     if (!user) throw new AppError('User not found', 404);
 
+    // Dynamic manager check
+    const directReportCount = await User.count({
+      where: { reporting_manager_id: userId, status: 'active' },
+    });
+
+    const json = user.toJSON();
     let avatarUrl = null;
-    if (user.avatar_key) {
-      try { avatarUrl = await getSignedS3Url(user.avatar_key); } catch (e) { /* S3 not configured */ }
+    if (json.avatar_path) {
+      avatarUrl = `/uploads/avatars/${path.basename(json.avatar_path)}`;
     }
 
-    return { ...user.toJSON(), avatarUrl };
+    return { ...json, avatarUrl, isManager: directReportCount > 0 };
   }
 
   async updateProfile(userId, data) {
@@ -23,24 +37,35 @@ class UserService {
     if (data.lastName) updateData.last_name = data.lastName;
     if (data.mobile) updateData.mobile = data.mobile;
     if (data.department) updateData.department = data.department;
+    if (data.dob) updateData.dob = data.dob;
+    if (data.designationId) updateData.designation_id = data.designationId;
 
     return userRepository.update(userId, updateData);
   }
 
+  /**
+   * Upload avatar to LOCAL filesystem (no S3).
+   */
   async uploadAvatar(userId, file) {
     const user = await userRepository.findById(userId);
     if (!user) throw new AppError('User not found', 404);
 
     // Delete old avatar if exists
-    if (user.avatar_key) {
-      try { await deleteFromS3(user.avatar_key); } catch (e) { /* ignore */ }
+    if (user.avatar_path) {
+      try { fs.unlinkSync(user.avatar_path); } catch { /* ignore */ }
     }
 
-    const key = await uploadToS3(file.buffer, file.originalname, 'avatars');
-    await User.update({ avatar_key: key }, { where: { id: userId } });
+    // Save with unique name
+    const ext = path.extname(file.originalname) || '.jpg';
+    const filename = `${userId}_${crypto.randomBytes(4).toString('hex')}${ext}`;
+    const filepath = path.join(UPLOAD_DIR, filename);
+    fs.writeFileSync(filepath, file.buffer);
 
-    const avatarUrl = await getSignedS3Url(key);
-    return { avatarUrl, avatarKey: key };
+    // Update DB
+    await User.update({ avatar_path: filepath }, { where: { id: userId } });
+
+    const avatarUrl = `/uploads/avatars/${filename}`;
+    return { avatarUrl };
   }
 
   async changePassword(userId, currentPassword, newPassword) {

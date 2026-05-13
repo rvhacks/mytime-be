@@ -52,6 +52,10 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customSiteTitle: 'My Time API Docs',
 }));
 
+// ---- STATIC FILES (avatar uploads) ----
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // ---- ROUTES ----
 app.use('/api', routes);
 

@@ -1,160 +1,374 @@
-const timesheetRepository = require('../repositories/timesheetRepository');
+const { Timesheet, TimesheetEntry, User, Project, Milestone, sequelize } = require('../infrastructure/models');
+const { Op } = require('sequelize');
 const notificationService = require('./notificationService');
 const AppError = require('../utils/AppError');
-const { TIMESHEET_STATUS } = require('../constants');
+const { ENTRY_STATUS } = require('../constants');
+
+/**
+ * Standard includes for loading a timesheet with all entry details.
+ */
+const ENTRY_INCLUDES = [
+  { model: Project, as: 'project', attributes: ['id', 'name', 'project_code', 'color'] },
+  { model: Milestone, as: 'milestone', attributes: ['id', 'name'] },
+  { model: User, as: 'reviewer', attributes: ['id', 'first_name', 'last_name'] },
+];
+
+const TIMESHEET_INCLUDES = [
+  { model: TimesheetEntry, as: 'entries', include: ENTRY_INCLUDES },
+  { model: User, as: 'user', attributes: { exclude: ['password'] } },
+];
 
 class TimesheetService {
+
+  // ===========================
+  // EMPLOYEE: Read
+  // ===========================
+
   async getTimesheetByWeek(userId, weekStartDate) {
-    return timesheetRepository.findByUserAndWeek(userId, weekStartDate);
+    let ts = await Timesheet.findOne({
+      where: { user_id: userId, week_start_date: weekStartDate },
+      include: TIMESHEET_INCLUDES,
+    });
+    return ts;
   }
 
-  async getUserTimesheets(userId, options) {
-    return timesheetRepository.findByUser(userId, options);
+  async getUserTimesheets(userId, options = {}) {
+    return Timesheet.findAndCountAll({
+      where: { user_id: userId },
+      include: TIMESHEET_INCLUDES,
+      order: [['week_start_date', 'DESC']],
+      ...options,
+    });
   }
 
-  // Admin: view employee timesheets
-  async getEmployeeTimesheets(employeeId, options) {
-    return timesheetRepository.findByUser(employeeId, options);
-  }
+  // ===========================
+  // EMPLOYEE: Save Draft
+  // ===========================
 
-  async saveTimesheet(userId, data) {
-    const existing = await timesheetRepository.findByUserAndWeek(userId, data.weekStartDate);
+  /**
+   * Save entries for a week. Only draft/recalled/rejected entries can be updated.
+   * Submitted/approved entries are NOT touched — employee can add new rows alongside them.
+   */
+  async saveEntries(userId, data) {
+    const { weekStartDate, weekEndDate, entries } = data;
 
-    const entries = data.entries.map((e) => ({
-      project_id: e.projectId,
-      milestone_id: e.milestoneId || null,
-      task_description: e.taskDescription || '',
-      billable: e.billable !== false,
-      hours_mon: e.hours.mon || 0,
-      hours_tue: e.hours.tue || 0,
-      hours_wed: e.hours.wed || 0,
-      hours_thu: e.hours.thu || 0,
-      hours_fri: e.hours.fri || 0,
-      hours_sat: e.hours.sat || 0,
-      hours_sun: e.hours.sun || 0,
-    }));
+    return sequelize.transaction(async (t) => {
+      // Get or create the week container
+      let ts = await Timesheet.findOne({
+        where: { user_id: userId, week_start_date: weekStartDate },
+        transaction: t,
+      });
 
-    const totalHours = entries.reduce((sum, e) =>
-      sum + e.hours_mon + e.hours_tue + e.hours_wed + e.hours_thu + e.hours_fri + e.hours_sat + e.hours_sun
-    , 0);
-
-    if (existing) {
-      if (existing.status === TIMESHEET_STATUS.APPROVED) {
-        throw new AppError('Cannot edit an approved timesheet', 400);
+      if (!ts) {
+        ts = await Timesheet.create({
+          user_id: userId,
+          week_start_date: weekStartDate,
+          week_end_date: weekEndDate,
+        }, { transaction: t });
       }
-      // Allow edit of submitted (not yet approved) — will revert to draft
-      const newStatus = existing.status === TIMESHEET_STATUS.SUBMITTED
-        ? TIMESHEET_STATUS.DRAFT
-        : TIMESHEET_STATUS.DRAFT;
 
-      return timesheetRepository.update(existing.id, {
-        total_hours: totalHours,
-        status: newStatus,
-        submitted_at: existing.status === TIMESHEET_STATUS.SUBMITTED ? null : existing.submitted_at,
-      }, entries);
-    }
+      // Get existing entries that are locked (submitted/approved)
+      const existingEntries = await TimesheetEntry.findAll({
+        where: { timesheet_id: ts.id },
+        transaction: t,
+      });
 
-    return timesheetRepository.create({
-      user_id: userId,
-      week_start_date: data.weekStartDate,
-      week_end_date: data.weekEndDate,
-      total_hours: totalHours,
-      status: TIMESHEET_STATUS.DRAFT,
-    }, entries);
-  }
+      const lockedEntryIds = existingEntries
+        .filter((e) => [ENTRY_STATUS.SUBMITTED, ENTRY_STATUS.APPROVED].includes(e.status))
+        .map((e) => e.id);
 
-  async submitTimesheet(userId, timesheetId) {
-    const ts = await timesheetRepository.findById(timesheetId);
-    if (!ts) throw new AppError('Timesheet not found', 404);
-    if (ts.user_id !== userId) throw new AppError('Unauthorized', 403);
-    if (ts.status !== TIMESHEET_STATUS.DRAFT && ts.status !== TIMESHEET_STATUS.REJECTED) {
-      throw new AppError('Only draft or rejected timesheets can be submitted', 400);
-    }
+      // Delete only editable (draft/recalled/rejected) entries — locked ones stay
+      await TimesheetEntry.destroy({
+        where: {
+          timesheet_id: ts.id,
+          id: { [Op.notIn]: lockedEntryIds },
+        },
+        transaction: t,
+      });
 
-    const result = await timesheetRepository.updateStatus(timesheetId, {
-      status: TIMESHEET_STATUS.SUBMITTED,
-      submitted_at: new Date(),
+      // Insert new entries (these are the editable rows from the frontend)
+      if (entries && entries.length > 0) {
+        const entryData = entries
+          .filter((e) => e.projectId) // skip empty rows
+          .map((e) => ({
+            timesheet_id: ts.id,
+            project_id: e.projectId,
+            milestone_id: e.milestoneId || null,
+            task_description: e.taskDescription || '',
+            billable: e.billable !== false,
+            hours_mon: e.hours?.mon || 0,
+            hours_tue: e.hours?.tue || 0,
+            hours_wed: e.hours?.wed || 0,
+            hours_thu: e.hours?.thu || 0,
+            hours_fri: e.hours?.fri || 0,
+            hours_sat: e.hours?.sat || 0,
+            hours_sun: e.hours?.sun || 0,
+            status: ENTRY_STATUS.DRAFT,
+          }));
+
+        if (entryData.length > 0) {
+          await TimesheetEntry.bulkCreate(entryData, { transaction: t });
+        }
+      }
+
+      // Return full timesheet with all entries
+      return this.getTimesheetByWeek(userId, weekStartDate);
     });
-
-    // Notify
-    try { await notificationService.onTimesheetSubmitted(userId, ts.week_start_date); } catch (e) { /* silent */ }
-
-    return result;
   }
 
-  async recallTimesheet(userId, timesheetId) {
-    const ts = await timesheetRepository.findById(timesheetId);
-    if (!ts) throw new AppError('Timesheet not found', 404);
-    if (ts.user_id !== userId) throw new AppError('Unauthorized', 403);
-    if (ts.status !== TIMESHEET_STATUS.SUBMITTED) {
-      throw new AppError('Only submitted timesheets can be recalled', 400);
-    }
+  // ===========================
+  // EMPLOYEE: Submit entries (per-entry)
+  // ===========================
 
-    const result = await timesheetRepository.updateStatus(timesheetId, {
-      status: TIMESHEET_STATUS.DRAFT,
-      submitted_at: null,
+  /**
+   * Submit specific entry IDs. Only draft/recalled/rejected entries can be submitted.
+   */
+  async submitEntries(userId, entryIds) {
+    return sequelize.transaction(async (t) => {
+      const entries = await TimesheetEntry.findAll({
+        where: { id: { [Op.in]: entryIds } },
+        include: [{ model: Timesheet, as: 'timesheet', attributes: ['user_id', 'week_start_date'] }],
+        transaction: t,
+      });
+
+      // Verify ownership and eligibility
+      for (const entry of entries) {
+        if (entry.timesheet.user_id !== userId) {
+          throw new AppError('Unauthorized: entry does not belong to you', 403);
+        }
+        if (![ENTRY_STATUS.DRAFT, ENTRY_STATUS.RECALLED, ENTRY_STATUS.REJECTED].includes(entry.status)) {
+          throw new AppError(`Entry ${entry.id} cannot be submitted (status: ${entry.status})`, 400);
+        }
+      }
+
+      // Update status
+      await TimesheetEntry.update(
+        { status: ENTRY_STATUS.SUBMITTED, submitted_at: new Date() },
+        { where: { id: { [Op.in]: entryIds } }, transaction: t }
+      );
+
+      // Notify employee
+      if (entries.length > 0) {
+        try {
+          await notificationService.onTimesheetSubmitted(userId, entries[0].timesheet.week_start_date);
+        } catch { /* silent */ }
+      }
+
+      // Return updated timesheet
+      const weekStart = entries[0]?.timesheet?.week_start_date;
+      return weekStart ? this.getTimesheetByWeek(userId, weekStart) : null;
     });
-
-    try { await notificationService.onTimesheetRecalled(userId, ts.week_start_date); } catch (e) { /* silent */ }
-
-    return result;
   }
 
-  // ---- MANAGER ----
-  async getPendingApprovals(options) {
-    return timesheetRepository.findPendingApprovals(options);
-  }
+  // ===========================
+  // EMPLOYEE: Recall entries (per-entry)
+  // ===========================
 
-  async approveTimesheet(reviewerId, timesheetId, comments) {
-    const ts = await timesheetRepository.findById(timesheetId);
-    if (!ts) throw new AppError('Timesheet not found', 404);
-    if (ts.status !== TIMESHEET_STATUS.SUBMITTED) {
-      throw new AppError('Only submitted timesheets can be approved', 400);
-    }
+  async recallEntries(userId, entryIds) {
+    return sequelize.transaction(async (t) => {
+      const entries = await TimesheetEntry.findAll({
+        where: { id: { [Op.in]: entryIds } },
+        include: [{ model: Timesheet, as: 'timesheet', attributes: ['user_id', 'week_start_date'] }],
+        transaction: t,
+      });
 
-    const reviewer = await require('../repositories/userRepository').findById(reviewerId);
-    const result = await timesheetRepository.updateStatus(timesheetId, {
-      status: TIMESHEET_STATUS.APPROVED,
-      reviewed_by: reviewerId,
-      reviewed_at: new Date(),
-      comments: comments || null,
+      for (const entry of entries) {
+        if (entry.timesheet.user_id !== userId) {
+          throw new AppError('Unauthorized', 403);
+        }
+        if (entry.status !== ENTRY_STATUS.SUBMITTED) {
+          throw new AppError(`Entry ${entry.id} can only be recalled when submitted (status: ${entry.status})`, 400);
+        }
+      }
+
+      await TimesheetEntry.update(
+        { status: ENTRY_STATUS.DRAFT, submitted_at: null },
+        { where: { id: { [Op.in]: entryIds } }, transaction: t }
+      );
+
+      if (entries.length > 0) {
+        try {
+          await notificationService.onTimesheetRecalled(userId, entries[0].timesheet.week_start_date);
+        } catch { /* silent */ }
+      }
+
+      const weekStart = entries[0]?.timesheet?.week_start_date;
+      return weekStart ? this.getTimesheetByWeek(userId, weekStart) : null;
     });
+  }
 
-    // Notify employee
-    try {
+  // ===========================
+  // MANAGER: Get pending approvals (scoped to direct reports)
+  // ===========================
+
+  async getPendingApprovalsForManager(managerId, options = {}) {
+    // Find direct report IDs
+    const directReports = await User.findAll({
+      where: { reporting_manager_id: managerId, status: 'active' },
+      attributes: ['id'],
+      raw: true,
+    });
+    const reportIds = directReports.map((u) => u.id);
+
+    if (reportIds.length === 0) return { count: 0, rows: [] };
+
+    // Find all submitted entries from direct reports
+    return TimesheetEntry.findAndCountAll({
+      where: { status: ENTRY_STATUS.SUBMITTED },
+      include: [
+        {
+          model: Timesheet,
+          as: 'timesheet',
+          where: { user_id: { [Op.in]: reportIds } },
+          include: [{ model: User, as: 'user', attributes: { exclude: ['password'] } }],
+        },
+        { model: Project, as: 'project', attributes: ['id', 'name', 'project_code', 'color'] },
+        { model: Milestone, as: 'milestone', attributes: ['id', 'name'] },
+      ],
+      order: [['submitted_at', 'DESC']],
+      ...options,
+    });
+  }
+
+  // ===========================
+  // MANAGER: Approve/Reject entries (per-entry)
+  // ===========================
+
+  async approveEntries(reviewerId, entryIds, comments) {
+    return sequelize.transaction(async (t) => {
+      const entries = await TimesheetEntry.findAll({
+        where: { id: { [Op.in]: entryIds }, status: ENTRY_STATUS.SUBMITTED },
+        include: [{ model: Timesheet, as: 'timesheet', include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'reporting_manager_id'] }] }],
+        transaction: t,
+      });
+
+      // Verify manager is the reporting manager of the employee
+      const reviewer = await User.findByPk(reviewerId, { attributes: ['id', 'first_name', 'last_name'], transaction: t });
+      for (const entry of entries) {
+        const employee = entry.timesheet?.user;
+        if (!employee) throw new AppError('Employee not found', 404);
+        if (employee.reporting_manager_id !== reviewerId) {
+          // Allow admin override
+          const reviewerUser = await User.findByPk(reviewerId, { transaction: t });
+          if (reviewerUser.role !== 'admin') {
+            throw new AppError('You are not the reporting manager of this employee', 403);
+          }
+        }
+      }
+
+      await TimesheetEntry.update(
+        {
+          status: ENTRY_STATUS.APPROVED,
+          reviewed_by: reviewerId,
+          reviewed_at: new Date(),
+          review_comments: comments || null,
+        },
+        { where: { id: { [Op.in]: entryIds } }, transaction: t }
+      );
+
+      // Notify each affected employee
+      const employeeIds = [...new Set(entries.map((e) => e.timesheet.user_id))];
       const reviewerName = reviewer ? `${reviewer.first_name} ${reviewer.last_name}` : 'Manager';
-      await notificationService.onTimesheetApproved(ts.user_id, ts.week_start_date, reviewerName);
-    } catch (e) { /* silent */ }
+      for (const empId of employeeIds) {
+        try {
+          const weekStart = entries.find((e) => e.timesheet.user_id === empId)?.timesheet.week_start_date;
+          await notificationService.onTimesheetApproved(empId, weekStart, reviewerName);
+        } catch { /* silent */ }
+      }
 
-    return result;
-  }
-
-  async rejectTimesheet(reviewerId, timesheetId, comments) {
-    const ts = await timesheetRepository.findById(timesheetId);
-    if (!ts) throw new AppError('Timesheet not found', 404);
-    if (ts.status !== TIMESHEET_STATUS.SUBMITTED) {
-      throw new AppError('Only submitted timesheets can be rejected', 400);
-    }
-
-    const reviewer = await require('../repositories/userRepository').findById(reviewerId);
-    const result = await timesheetRepository.updateStatus(timesheetId, {
-      status: TIMESHEET_STATUS.REJECTED,
-      reviewed_by: reviewerId,
-      reviewed_at: new Date(),
-      comments: comments || 'Rejected',
+      return { message: `${entryIds.length} entries approved` };
     });
-
-    try {
-      const reviewerName = reviewer ? `${reviewer.first_name} ${reviewer.last_name}` : 'Manager';
-      await notificationService.onTimesheetRejected(ts.user_id, ts.week_start_date, reviewerName, comments);
-    } catch (e) { /* silent */ }
-
-    return result;
   }
 
-  // ---- REPORTS ----
-  async getReportsData(filters) {
-    return timesheetRepository.findAllForReports(filters);
+  async rejectEntries(reviewerId, entryIds, comments) {
+    return sequelize.transaction(async (t) => {
+      const entries = await TimesheetEntry.findAll({
+        where: { id: { [Op.in]: entryIds }, status: ENTRY_STATUS.SUBMITTED },
+        include: [{ model: Timesheet, as: 'timesheet', include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'reporting_manager_id'] }] }],
+        transaction: t,
+      });
+
+      const reviewer = await User.findByPk(reviewerId, { attributes: ['id', 'first_name', 'last_name'], transaction: t });
+      for (const entry of entries) {
+        const employee = entry.timesheet?.user;
+        if (!employee) throw new AppError('Employee not found', 404);
+        if (employee.reporting_manager_id !== reviewerId) {
+          const reviewerUser = await User.findByPk(reviewerId, { transaction: t });
+          if (reviewerUser.role !== 'admin') {
+            throw new AppError('You are not the reporting manager of this employee', 403);
+          }
+        }
+      }
+
+      await TimesheetEntry.update(
+        {
+          status: ENTRY_STATUS.REJECTED,
+          reviewed_by: reviewerId,
+          reviewed_at: new Date(),
+          review_comments: comments || 'Rejected',
+        },
+        { where: { id: { [Op.in]: entryIds } }, transaction: t }
+      );
+
+      const employeeIds = [...new Set(entries.map((e) => e.timesheet.user_id))];
+      const reviewerName = reviewer ? `${reviewer.first_name} ${reviewer.last_name}` : 'Manager';
+      for (const empId of employeeIds) {
+        try {
+          const weekStart = entries.find((e) => e.timesheet.user_id === empId)?.timesheet.week_start_date;
+          await notificationService.onTimesheetRejected(empId, weekStart, reviewerName, comments);
+        } catch { /* silent */ }
+      }
+
+      return { message: `${entryIds.length} entries rejected` };
+    });
+  }
+
+  // ===========================
+  // ADMIN: view employee timesheets
+  // ===========================
+
+  async getEmployeeTimesheets(employeeId, options = {}) {
+    return Timesheet.findAndCountAll({
+      where: { user_id: employeeId },
+      include: TIMESHEET_INCLUDES,
+      order: [['week_start_date', 'DESC']],
+      ...options,
+    });
+  }
+
+  // ===========================
+  // REPORTS
+  // ===========================
+
+  async getReportsData(filters = {}) {
+    const entryWhere = { status: { [Op.ne]: ENTRY_STATUS.DRAFT } };
+    const timesheetWhere = {};
+
+    if (filters.startDate) timesheetWhere.week_start_date = { [Op.gte]: filters.startDate };
+    if (filters.endDate) {
+      timesheetWhere.week_end_date = timesheetWhere.week_end_date || {};
+      timesheetWhere.week_end_date[Op.lte] = filters.endDate;
+    }
+    if (filters.userId) timesheetWhere.user_id = filters.userId;
+    if (filters.projectId) entryWhere.project_id = filters.projectId;
+
+    return Timesheet.findAll({
+      where: Object.keys(timesheetWhere).length ? timesheetWhere : undefined,
+      include: [
+        { model: User, as: 'user', attributes: ['id', 'first_name', 'last_name'] },
+        {
+          model: TimesheetEntry,
+          as: 'entries',
+          where: entryWhere,
+          required: true,
+          include: [
+            { model: Project, as: 'project', attributes: ['id', 'name', 'project_code', 'color'] },
+            { model: Milestone, as: 'milestone', attributes: ['id', 'name'] },
+          ],
+        },
+      ],
+      order: [['week_start_date', 'DESC']],
+    });
   }
 }
 

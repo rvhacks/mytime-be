@@ -2,6 +2,10 @@ const catchAsync = require('../utils/catchAsync');
 const timesheetService = require('../services/timesheetService');
 const { buildPaginationQuery, buildPaginationResponse } = require('../utils/helpers');
 
+// ===========================
+// EMPLOYEE: Get week's timesheet
+// ===========================
+
 exports.getMyTimesheet = catchAsync(async (req, res) => {
   const { weekStartDate } = req.query;
   const data = await timesheetService.getTimesheetByWeek(req.user.id, weekStartDate);
@@ -14,81 +18,155 @@ exports.getMyTimesheets = catchAsync(async (req, res) => {
   res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
-exports.saveTimesheet = catchAsync(async (req, res) => {
-  const data = await timesheetService.saveTimesheet(req.user.id, req.body);
+// ===========================
+// EMPLOYEE: Save entries (draft)
+// ===========================
+
+exports.saveEntries = catchAsync(async (req, res) => {
+  const data = await timesheetService.saveEntries(req.user.id, req.body);
   res.json({ status: 'success', data });
 });
 
-exports.submitTimesheet = catchAsync(async (req, res) => {
-  const data = await timesheetService.submitTimesheet(req.user.id, req.body.timesheetId);
+// ===========================
+// EMPLOYEE: Submit entries
+// ===========================
+
+exports.submitEntries = catchAsync(async (req, res) => {
+  const { entryIds } = req.body;
+  if (!entryIds || !Array.isArray(entryIds) || entryIds.length === 0) {
+    return res.status(400).json({ status: 'fail', message: 'entryIds array required' });
+  }
+  const data = await timesheetService.submitEntries(req.user.id, entryIds);
   res.json({ status: 'success', data });
 });
 
-exports.recallTimesheet = catchAsync(async (req, res) => {
-  const data = await timesheetService.recallTimesheet(req.user.id, req.params.id);
+// ===========================
+// EMPLOYEE: Recall entries
+// ===========================
+
+exports.recallEntries = catchAsync(async (req, res) => {
+  const { entryIds } = req.body;
+  if (!entryIds || !Array.isArray(entryIds) || entryIds.length === 0) {
+    return res.status(400).json({ status: 'fail', message: 'entryIds array required' });
+  }
+  const data = await timesheetService.recallEntries(req.user.id, entryIds);
   res.json({ status: 'success', data });
 });
 
-// ---- APPROVALS (Manager/Admin) ----
+// ===========================
+// MANAGER: Get pending approvals (scoped to direct reports)
+// ===========================
+
 exports.getPendingApprovals = catchAsync(async (req, res) => {
   const { page, limit, offset } = buildPaginationQuery(req.query);
-  const data = await timesheetService.getPendingApprovals({ limit, offset });
+
+  // Admin sees all submitted; manager sees only direct reports
+  let data;
+  if (req.user.role === 'admin') {
+    const { TimesheetEntry, Timesheet, User, Project, Milestone } = require('../infrastructure/models');
+    data = await TimesheetEntry.findAndCountAll({
+      where: { status: 'submitted' },
+      include: [
+        {
+          model: Timesheet, as: 'timesheet',
+          include: [{ model: User, as: 'user', attributes: { exclude: ['password'] } }],
+        },
+        { model: Project, as: 'project', attributes: ['id', 'name', 'project_code', 'color'] },
+        { model: Milestone, as: 'milestone', attributes: ['id', 'name'] },
+      ],
+      order: [['submitted_at', 'DESC']],
+      limit, offset,
+    });
+  } else {
+    data = await timesheetService.getPendingApprovalsForManager(req.user.id, { limit, offset });
+  }
+
   res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
+// ===========================
+// MANAGER: Approve/Reject entries
+// ===========================
+
 exports.approvalAction = catchAsync(async (req, res) => {
-  const { timesheetId, action, comments } = req.body;
+  const { entryIds, action, comments } = req.body;
+  if (!entryIds || !Array.isArray(entryIds) || entryIds.length === 0) {
+    return res.status(400).json({ status: 'fail', message: 'entryIds array required' });
+  }
+
   let data;
   if (action === 'approve') {
-    data = await timesheetService.approveTimesheet(req.user.id, timesheetId, comments);
+    data = await timesheetService.approveEntries(req.user.id, entryIds, comments);
   } else {
-    data = await timesheetService.rejectTimesheet(req.user.id, timesheetId, comments);
+    data = await timesheetService.rejectEntries(req.user.id, entryIds, comments);
   }
   res.json({ status: 'success', data });
 });
 
+// ===========================
+// TIMESHEET DETAIL
+// ===========================
+
 exports.getTimesheetDetail = catchAsync(async (req, res) => {
-  const timesheetRepository = require('../repositories/timesheetRepository');
-  const data = await timesheetRepository.findById(req.params.id);
+  const { Timesheet, TimesheetEntry, User, Project, Milestone } = require('../infrastructure/models');
+  const data = await Timesheet.findByPk(req.params.id, {
+    include: [
+      {
+        model: TimesheetEntry, as: 'entries',
+        include: [
+          { model: Project, as: 'project', attributes: ['id', 'name', 'project_code', 'color'] },
+          { model: Milestone, as: 'milestone', attributes: ['id', 'name'] },
+          { model: User, as: 'reviewer', attributes: ['id', 'first_name', 'last_name'] },
+        ],
+      },
+      { model: User, as: 'user', attributes: { exclude: ['password'] } },
+    ],
+  });
   if (!data) return res.status(404).json({ status: 'fail', message: 'Timesheet not found' });
   res.json({ status: 'success', data });
 });
 
-// Admin: view any employee's timesheets
+// ===========================
+// ADMIN: view employee timesheets
+// ===========================
+
 exports.getEmployeeTimesheets = catchAsync(async (req, res) => {
   const { page, limit, offset } = buildPaginationQuery(req.query);
   const data = await timesheetService.getEmployeeTimesheets(req.params.employeeId, { limit, offset });
   res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
-// ---- ASSIGNED PROJECTS (for employee's My Projects + Timesheet dropdown) ----
-// ROOT FIX: Flatten the nested assignment→project structure into project-level objects
-// with the assignment role included. This is what the frontend expects.
+// ===========================
+// ASSIGNED PROJECTS (employee)
+// ===========================
+
 exports.getMyAssignedProjects = catchAsync(async (req, res) => {
   const { ProjectAssignment, Project } = require('../infrastructure/models');
-  
+
   const assignments = await ProjectAssignment.findAll({
     where: { user_id: req.user.id },
     include: [{ model: Project, as: 'project' }],
     raw: false,
   });
 
-  // Flatten: return project data with assignment role at root level
   const projects = assignments
-    .filter((a) => a.project) // guard against orphaned assignments
+    .filter((a) => a.project)
     .map((a) => {
       const p = a.project.toJSON();
       return {
         ...p,
-        assignment_role: a.role,          // role this user has on this project
-        assignment_id: a.id,              // the assignment ID
+        assignment_role: a.role,
+        assignment_id: a.id,
       };
     });
 
   res.json({ status: 'success', data: projects });
 });
 
-// ---- MILESTONES BY ROLE (for timesheet milestone dropdown filtering) ----
+// ===========================
+// MILESTONES BY ROLE
+// ===========================
+
 exports.getMilestonesByRole = catchAsync(async (req, res) => {
   const { Milestone } = require('../infrastructure/models');
   const milestones = await Milestone.findAll({
@@ -98,7 +176,27 @@ exports.getMilestonesByRole = catchAsync(async (req, res) => {
   res.json({ status: 'success', data: milestones });
 });
 
-// ---- REPORTS ----
+// ===========================
+// PROJECT DETAIL (for employees)
+// ===========================
+
+exports.getProjectDetail = catchAsync(async (req, res) => {
+  const { Project, ProjectAssignment, User } = require('../infrastructure/models');
+  const project = await Project.findByPk(req.params.projectId, {
+    include: [{
+      model: ProjectAssignment,
+      as: 'assignments',
+      include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'email'] }],
+    }],
+  });
+  if (!project) return res.status(404).json({ status: 'fail', message: 'Project not found' });
+  res.json({ status: 'success', data: project });
+});
+
+// ===========================
+// REPORTS
+// ===========================
+
 exports.getReports = catchAsync(async (req, res) => {
   const { startDate, endDate, userId, projectId } = req.query;
   const data = await timesheetService.getReportsData({ startDate, endDate, userId, projectId });

@@ -1,8 +1,9 @@
 module.exports = {
   USER_ROLES: {
     ADMIN: 'admin',
-    MANAGER: 'manager',
     EMPLOYEE: 'employee',
+    // NOTE: 'manager' role removed. Manager status is dynamic:
+    // A user is a manager if they have at least one direct report.
   },
 
   // Centralized project roles with full labels – single source of truth
@@ -20,6 +21,16 @@ module.exports = {
 
   PROJECT_STATUS: ['active', 'completed', 'on-hold'],
 
+  // Entry-level statuses (not timesheet-level)
+  ENTRY_STATUS: {
+    DRAFT: 'draft',
+    SUBMITTED: 'submitted',
+    RECALLED: 'recalled',
+    APPROVED: 'approved',
+    REJECTED: 'rejected',
+  },
+
+  // Legacy: kept for backward compat but unused in new flow
   TIMESHEET_STATUS: {
     DRAFT: 'draft',
     SUBMITTED: 'submitted',
