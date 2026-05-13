@@ -61,11 +61,41 @@ exports.getEmployeeTimesheets = catchAsync(async (req, res) => {
   res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
-// Assigned projects for the current user (for timesheet dropdown)
+// ---- ASSIGNED PROJECTS (for employee's My Projects + Timesheet dropdown) ----
+// ROOT FIX: Flatten the nested assignment→project structure into project-level objects
+// with the assignment role included. This is what the frontend expects.
 exports.getMyAssignedProjects = catchAsync(async (req, res) => {
-  const assignmentRepository = require('../repositories/assignmentRepository');
-  const data = await assignmentRepository.findByUser(req.user.id);
-  res.json({ status: 'success', data });
+  const { ProjectAssignment, Project } = require('../infrastructure/models');
+  
+  const assignments = await ProjectAssignment.findAll({
+    where: { user_id: req.user.id },
+    include: [{ model: Project, as: 'project' }],
+    raw: false,
+  });
+
+  // Flatten: return project data with assignment role at root level
+  const projects = assignments
+    .filter((a) => a.project) // guard against orphaned assignments
+    .map((a) => {
+      const p = a.project.toJSON();
+      return {
+        ...p,
+        assignment_role: a.role,          // role this user has on this project
+        assignment_id: a.id,              // the assignment ID
+      };
+    });
+
+  res.json({ status: 'success', data: projects });
+});
+
+// ---- MILESTONES BY ROLE (for timesheet milestone dropdown filtering) ----
+exports.getMilestonesByRole = catchAsync(async (req, res) => {
+  const { Milestone } = require('../infrastructure/models');
+  const milestones = await Milestone.findAll({
+    where: { role: req.params.role },
+    order: [['name', 'ASC']],
+  });
+  res.json({ status: 'success', data: milestones });
 });
 
 // ---- REPORTS ----

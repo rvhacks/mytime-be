@@ -66,7 +66,7 @@ class TimesheetRepository {
   }
 
   async findAllForReports(filters = {}) {
-    const where = {};
+    const where = { status: { [Op.ne]: 'draft' } }; // Exclude drafts from reports
     if (filters.startDate) where.week_start_date = { [Op.gte]: filters.startDate };
     if (filters.endDate) {
       where.week_end_date = where.week_end_date || {};

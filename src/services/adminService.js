@@ -232,21 +232,28 @@ class AdminService {
     // Active projects
     const activeProjects = await Project.count({ where: { status: 'active' } });
 
-    // Total hours logged (last 30 days)
+    // Total hours logged (last 30 days) — EXCLUDE drafts
+    const nonDraftStatuses = ['submitted', 'approved', 'rejected'];
     const hoursResult = await Timesheet.findAll({
-      where: { week_start_date: { [Op.gte]: thirtyDaysAgo } },
+      where: {
+        week_start_date: { [Op.gte]: thirtyDaysAgo },
+        status: { [Op.in]: nonDraftStatuses },
+      },
       attributes: [[fn('COALESCE', fn('SUM', col('total_hours')), 0), 'totalHours']],
       raw: true,
     });
     const totalHoursLogged = parseFloat(hoursResult[0]?.totalHours || 0);
 
-    // Billable hours (last 30 days)
+    // Billable hours (last 30 days) — EXCLUDE drafts
     const billableResult = await TimesheetEntry.findAll({
       where: { billable: true },
       include: [{
         model: Timesheet,
         as: 'timesheet',
-        where: { week_start_date: { [Op.gte]: thirtyDaysAgo } },
+        where: {
+          week_start_date: { [Op.gte]: thirtyDaysAgo },
+          status: { [Op.in]: nonDraftStatuses },
+        },
         attributes: [],
       }],
       attributes: [
@@ -255,6 +262,25 @@ class AdminService {
       raw: true,
     });
     const billableHours = parseFloat(billableResult[0]?.billableHours || 0);
+
+    // Non-billable hours (last 30 days) — EXCLUDE drafts
+    const nonBillableResult = await TimesheetEntry.findAll({
+      where: { billable: false },
+      include: [{
+        model: Timesheet,
+        as: 'timesheet',
+        where: {
+          week_start_date: { [Op.gte]: thirtyDaysAgo },
+          status: { [Op.in]: nonDraftStatuses },
+        },
+        attributes: [],
+      }],
+      attributes: [
+        [literal('COALESCE(SUM(hours_mon + hours_tue + hours_wed + hours_thu + hours_fri + hours_sat + hours_sun), 0)'), 'nonBillableHours'],
+      ],
+      raw: true,
+    });
+    const nonBillableHours = parseFloat(nonBillableResult[0]?.nonBillableHours || 0);
 
     // Approval rate (last 30 days)
     const totalTimesheets = await Timesheet.count({
@@ -273,7 +299,7 @@ class AdminService {
       activeProjects,
       totalHoursLogged,
       billableHours,
-      nonBillableHours: totalHoursLogged - billableHours,
+      nonBillableHours,
       approvalRate,
       pendingApprovals,
     };

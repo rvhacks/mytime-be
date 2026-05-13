@@ -16,6 +16,9 @@ router.post('/submit', validate(submitTimesheetSchema), timesheetController.subm
 router.post('/recall/:id', timesheetController.recallTimesheet);
 router.get('/detail/:id', timesheetController.getTimesheetDetail);
 
+// Milestones by role (for timesheet dropdown filtering)
+router.get('/milestones/role/:role', timesheetController.getMilestonesByRole);
+
 // Manager approvals
 router.get('/approvals', authorize('manager', 'admin'), timesheetController.getPendingApprovals);
 router.post('/approvals/action', authorize('manager', 'admin'), validate(approvalActionSchema), timesheetController.approvalAction);
