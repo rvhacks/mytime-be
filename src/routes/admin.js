@@ -11,6 +11,9 @@ const {
 router.use(authenticate);
 router.use(authorize('admin'));
 
+// Dashboard stats
+router.get('/dashboard/stats', adminController.getDashboardStats);
+
 // Designations
 router.get('/designations', adminController.getDesignations);
 router.post('/designations', validate(createDesignationSchema), adminController.createDesignation);
@@ -21,6 +24,7 @@ router.delete('/designations/:id', adminController.deleteDesignation);
 router.get('/employees', adminController.getEmployees);
 router.post('/employees', validate(createEmployeeSchema), adminController.createEmployee);
 router.put('/employees/:id', adminController.updateEmployee);
+router.post('/employees/:id/reset-password', adminController.resetEmployeePassword);
 router.delete('/employees/:id', adminController.deleteEmployee);
 
 // Projects
@@ -36,6 +40,7 @@ router.delete('/assignments/:id', adminController.deleteAssignment);
 
 // Milestones
 router.get('/milestones', adminController.getMilestones);
+router.get('/milestones/role/:role', adminController.getMilestonesByRole);
 router.post('/milestones', validate(createMilestoneSchema), adminController.createMilestone);
 router.put('/milestones/:id', adminController.updateMilestone);
 router.delete('/milestones/:id', adminController.deleteMilestone);

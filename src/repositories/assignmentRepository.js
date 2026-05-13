@@ -1,15 +1,18 @@
 const { ProjectAssignment, User, Project } = require('../infrastructure/models');
+const { Op } = require('sequelize');
 
 class AssignmentRepository {
   async findAll(options = {}) {
+    const { where = {}, search, ...rest } = options;
+
     return ProjectAssignment.findAndCountAll({
+      where,
       include: [
         { model: User, as: 'user', attributes: { exclude: ['password'] } },
         { model: Project, as: 'project' },
-        { model: User, as: 'reportingManager', attributes: { exclude: ['password'] } },
       ],
       order: [['created_at', 'DESC']],
-      ...options,
+      ...rest,
     });
   }
 
@@ -18,7 +21,6 @@ class AssignmentRepository {
       include: [
         { model: User, as: 'user', attributes: { exclude: ['password'] } },
         { model: Project, as: 'project' },
-        { model: User, as: 'reportingManager', attributes: { exclude: ['password'] } },
       ],
     });
   }
@@ -29,12 +31,20 @@ class AssignmentRepository {
     });
   }
 
+  async findByUser(userId) {
+    return ProjectAssignment.findAll({
+      where: { user_id: userId },
+      include: [
+        { model: Project, as: 'project' },
+      ],
+    });
+  }
+
   async findByProject(projectId) {
     return ProjectAssignment.findAll({
       where: { project_id: projectId },
       include: [
         { model: User, as: 'user', attributes: { exclude: ['password'] } },
-        { model: User, as: 'reportingManager', attributes: { exclude: ['password'] } },
       ],
     });
   }

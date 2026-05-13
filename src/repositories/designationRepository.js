@@ -1,8 +1,20 @@
 const { Designation } = require('../infrastructure/models');
+const { Op } = require('sequelize');
 
 class DesignationRepository {
-  async findAll() {
-    return Designation.findAll({ order: [['name', 'ASC']] });
+  async findAll(options = {}) {
+    const { where = {}, search, ...rest } = options;
+    const finalWhere = { ...where };
+
+    if (search) {
+      finalWhere.name = { [Op.iLike]: `%${search}%` };
+    }
+
+    return Designation.findAndCountAll({
+      where: finalWhere,
+      order: [['name', 'ASC']],
+      ...rest,
+    });
   }
 
   async findById(id) {

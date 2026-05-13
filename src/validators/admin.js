@@ -13,32 +13,30 @@ const createEmployeeSchema = Joi.object({
   designationId: Joi.string().uuid().required(),
   joiningDate: Joi.date().required(),
   role: Joi.string().valid('admin', 'manager', 'employee').default('employee'),
-  department: Joi.string().max(100).optional(),
+  department: Joi.string().max(100).optional().allow('', null),
+  reportingManagerId: Joi.string().uuid().optional().allow('', null),
 });
 
 const createProjectSchema = Joi.object({
-  projectCode: Joi.string().max(20).optional().allow(''),
+  projectCode: Joi.string().max(20).optional().allow('', null),
   name: Joi.string().min(1).max(255).required(),
-  description: Joi.string().optional().allow(''),
-  color: Joi.string().max(10).default('#6366f1'),
-  startDate: Joi.date().optional(),
-  endDate: Joi.date().optional(),
+  description: Joi.string().optional().allow('', null),
+  color: Joi.string().max(10).optional().allow('', null),
+  startDate: Joi.date().optional().allow(null),
+  endDate: Joi.date().optional().allow(null),
   status: Joi.string().valid('active', 'completed', 'on-hold').default('active'),
-  reportingManagers: Joi.array().items(Joi.string().uuid()).default([]),
 });
 
 const createAssignmentSchema = Joi.object({
   userId: Joi.string().uuid().required(),
   projectId: Joi.string().uuid().required(),
-  rmId: Joi.string().uuid().required(),
   role: Joi.string().valid('IC', 'MS', 'TPM', 'PM', 'QA', 'BA').required(),
 });
 
 const createMilestoneSchema = Joi.object({
-  projectId: Joi.string().uuid().required(),
   name: Joi.string().min(1).max(255).required(),
-  description: Joi.string().optional().allow(''),
-  role: Joi.string().valid('IC', 'MS', 'TPM', 'PM', 'QA', 'BA').optional().allow('', null),
+  description: Joi.string().optional().allow('', null),
+  role: Joi.string().valid('IC', 'MS', 'TPM', 'PM', 'QA', 'BA').required(),
 });
 
 module.exports = {

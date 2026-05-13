@@ -1,17 +1,29 @@
-const { Project, Milestone } = require('../infrastructure/models');
+const { Project, ProjectAssignment } = require('../infrastructure/models');
+const { Op } = require('sequelize');
 
 class ProjectRepository {
   async findAll(options = {}) {
+    const { where = {}, search, ...rest } = options;
+    const finalWhere = { ...where };
+
+    if (search) {
+      finalWhere[Op.or] = [
+        { name: { [Op.iLike]: `%${search}%` } },
+        { project_code: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
     return Project.findAndCountAll({
-      include: [{ model: Milestone, as: 'milestones' }],
+      where: finalWhere,
+      include: [{ model: ProjectAssignment, as: 'assignments' }],
       order: [['created_at', 'DESC']],
-      ...options,
+      ...rest,
     });
   }
 
   async findById(id) {
     return Project.findByPk(id, {
-      include: [{ model: Milestone, as: 'milestones' }],
+      include: [{ model: ProjectAssignment, as: 'assignments' }],
     });
   }
 
@@ -28,6 +40,7 @@ class ProjectRepository {
     return this.findById(id);
   }
 
+  // Soft delete — handled by Sequelize paranoid mode
   async delete(id) {
     return Project.destroy({ where: { id } });
   }

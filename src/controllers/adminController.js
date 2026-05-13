@@ -1,10 +1,12 @@
 const catchAsync = require('../utils/catchAsync');
 const adminService = require('../services/adminService');
+const { buildPaginationQuery, buildPaginationResponse } = require('../utils/helpers');
 
 // ---- DESIGNATIONS ----
 exports.getDesignations = catchAsync(async (req, res) => {
-  const data = await adminService.getDesignations();
-  res.json({ status: 'success', data });
+  const { page, limit, offset, search, sortBy, sortOrder } = buildPaginationQuery(req.query);
+  const data = await adminService.getDesignations({ limit, offset, search, order: [[sortBy, sortOrder]] });
+  res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
 exports.createDesignation = catchAsync(async (req, res) => {
@@ -24,8 +26,9 @@ exports.deleteDesignation = catchAsync(async (req, res) => {
 
 // ---- EMPLOYEES ----
 exports.getEmployees = catchAsync(async (req, res) => {
-  const data = await adminService.getEmployees();
-  res.json({ status: 'success', data });
+  const { page, limit, offset, search, sortBy, sortOrder } = buildPaginationQuery(req.query);
+  const data = await adminService.getEmployees({ limit, offset, search, order: [[sortBy, sortOrder]] });
+  res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
 exports.createEmployee = catchAsync(async (req, res) => {
@@ -38,6 +41,11 @@ exports.updateEmployee = catchAsync(async (req, res) => {
   res.json({ status: 'success', data });
 });
 
+exports.resetEmployeePassword = catchAsync(async (req, res) => {
+  const data = await adminService.resetEmployeePassword(req.params.id);
+  res.json({ status: 'success', data });
+});
+
 exports.deleteEmployee = catchAsync(async (req, res) => {
   await adminService.deleteEmployee(req.params.id);
   res.json({ status: 'success', message: 'Employee deleted' });
@@ -45,8 +53,9 @@ exports.deleteEmployee = catchAsync(async (req, res) => {
 
 // ---- PROJECTS ----
 exports.getProjects = catchAsync(async (req, res) => {
-  const data = await adminService.getProjects();
-  res.json({ status: 'success', data });
+  const { page, limit, offset, search, sortBy, sortOrder } = buildPaginationQuery(req.query);
+  const data = await adminService.getProjects({ limit, offset, search, order: [[sortBy, sortOrder]] });
+  res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
 exports.createProject = catchAsync(async (req, res) => {
@@ -61,13 +70,14 @@ exports.updateProject = catchAsync(async (req, res) => {
 
 exports.deleteProject = catchAsync(async (req, res) => {
   await adminService.deleteProject(req.params.id);
-  res.json({ status: 'success', message: 'Project deleted' });
+  res.json({ status: 'success', message: 'Project archived' });
 });
 
 // ---- ASSIGNMENTS ----
 exports.getAssignments = catchAsync(async (req, res) => {
-  const data = await adminService.getAssignments();
-  res.json({ status: 'success', data });
+  const { page, limit, offset, sortBy, sortOrder } = buildPaginationQuery(req.query);
+  const data = await adminService.getAssignments({ limit, offset, order: [[sortBy, sortOrder]] });
+  res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
 exports.createAssignment = catchAsync(async (req, res) => {
@@ -82,7 +92,13 @@ exports.deleteAssignment = catchAsync(async (req, res) => {
 
 // ---- MILESTONES ----
 exports.getMilestones = catchAsync(async (req, res) => {
-  const data = await adminService.getMilestones();
+  const { page, limit, offset, search, sortBy, sortOrder } = buildPaginationQuery(req.query);
+  const data = await adminService.getMilestones({ limit, offset, search, order: [[sortBy, sortOrder]] });
+  res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
+});
+
+exports.getMilestonesByRole = catchAsync(async (req, res) => {
+  const data = await adminService.getMilestonesByRole(req.params.role);
   res.json({ status: 'success', data });
 });
 
@@ -99,4 +115,10 @@ exports.updateMilestone = catchAsync(async (req, res) => {
 exports.deleteMilestone = catchAsync(async (req, res) => {
   await adminService.deleteMilestone(req.params.id);
   res.json({ status: 'success', message: 'Milestone deleted' });
+});
+
+// ---- DASHBOARD STATS ----
+exports.getDashboardStats = catchAsync(async (req, res) => {
+  const data = await adminService.getDashboardStats();
+  res.json({ status: 'success', data });
 });

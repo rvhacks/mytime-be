@@ -1,5 +1,6 @@
 const catchAsync = require('../utils/catchAsync');
 const timesheetService = require('../services/timesheetService');
+const { buildPaginationQuery, buildPaginationResponse } = require('../utils/helpers');
 
 exports.getMyTimesheet = catchAsync(async (req, res) => {
   const { weekStartDate } = req.query;
@@ -8,8 +9,9 @@ exports.getMyTimesheet = catchAsync(async (req, res) => {
 });
 
 exports.getMyTimesheets = catchAsync(async (req, res) => {
-  const data = await timesheetService.getUserTimesheets(req.user.id);
-  res.json({ status: 'success', data });
+  const { page, limit, offset } = buildPaginationQuery(req.query);
+  const data = await timesheetService.getUserTimesheets(req.user.id, { limit, offset });
+  res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
 exports.saveTimesheet = catchAsync(async (req, res) => {
@@ -27,10 +29,11 @@ exports.recallTimesheet = catchAsync(async (req, res) => {
   res.json({ status: 'success', data });
 });
 
-// ---- APPROVALS (Manager) ----
+// ---- APPROVALS (Manager/Admin) ----
 exports.getPendingApprovals = catchAsync(async (req, res) => {
-  const data = await timesheetService.getPendingApprovals();
-  res.json({ status: 'success', data });
+  const { page, limit, offset } = buildPaginationQuery(req.query);
+  const data = await timesheetService.getPendingApprovals({ limit, offset });
+  res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
 exports.approvalAction = catchAsync(async (req, res) => {
@@ -48,6 +51,20 @@ exports.getTimesheetDetail = catchAsync(async (req, res) => {
   const timesheetRepository = require('../repositories/timesheetRepository');
   const data = await timesheetRepository.findById(req.params.id);
   if (!data) return res.status(404).json({ status: 'fail', message: 'Timesheet not found' });
+  res.json({ status: 'success', data });
+});
+
+// Admin: view any employee's timesheets
+exports.getEmployeeTimesheets = catchAsync(async (req, res) => {
+  const { page, limit, offset } = buildPaginationQuery(req.query);
+  const data = await timesheetService.getEmployeeTimesheets(req.params.employeeId, { limit, offset });
+  res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
+});
+
+// Assigned projects for the current user (for timesheet dropdown)
+exports.getMyAssignedProjects = catchAsync(async (req, res) => {
+  const assignmentRepository = require('../repositories/assignmentRepository');
+  const data = await assignmentRepository.findByUser(req.user.id);
   res.json({ status: 'success', data });
 });
 

@@ -1,4 +1,5 @@
 const timesheetRepository = require('../repositories/timesheetRepository');
+const notificationService = require('./notificationService');
 const AppError = require('../utils/AppError');
 const { TIMESHEET_STATUS } = require('../constants');
 
@@ -9,6 +10,11 @@ class TimesheetService {
 
   async getUserTimesheets(userId, options) {
     return timesheetRepository.findByUser(userId, options);
+  }
+
+  // Admin: view employee timesheets
+  async getEmployeeTimesheets(employeeId, options) {
+    return timesheetRepository.findByUser(employeeId, options);
   }
 
   async saveTimesheet(userId, data) {
@@ -36,12 +42,15 @@ class TimesheetService {
       if (existing.status === TIMESHEET_STATUS.APPROVED) {
         throw new AppError('Cannot edit an approved timesheet', 400);
       }
-      if (existing.status === TIMESHEET_STATUS.SUBMITTED) {
-        throw new AppError('Cannot edit a submitted timesheet. Recall it first.', 400);
-      }
+      // Allow edit of submitted (not yet approved) — will revert to draft
+      const newStatus = existing.status === TIMESHEET_STATUS.SUBMITTED
+        ? TIMESHEET_STATUS.DRAFT
+        : TIMESHEET_STATUS.DRAFT;
+
       return timesheetRepository.update(existing.id, {
         total_hours: totalHours,
-        status: TIMESHEET_STATUS.DRAFT,
+        status: newStatus,
+        submitted_at: existing.status === TIMESHEET_STATUS.SUBMITTED ? null : existing.submitted_at,
       }, entries);
     }
 
@@ -62,10 +71,15 @@ class TimesheetService {
       throw new AppError('Only draft or rejected timesheets can be submitted', 400);
     }
 
-    return timesheetRepository.updateStatus(timesheetId, {
+    const result = await timesheetRepository.updateStatus(timesheetId, {
       status: TIMESHEET_STATUS.SUBMITTED,
       submitted_at: new Date(),
     });
+
+    // Notify
+    try { await notificationService.onTimesheetSubmitted(userId, ts.week_start_date); } catch (e) { /* silent */ }
+
+    return result;
   }
 
   async recallTimesheet(userId, timesheetId) {
@@ -76,10 +90,14 @@ class TimesheetService {
       throw new AppError('Only submitted timesheets can be recalled', 400);
     }
 
-    return timesheetRepository.updateStatus(timesheetId, {
+    const result = await timesheetRepository.updateStatus(timesheetId, {
       status: TIMESHEET_STATUS.DRAFT,
       submitted_at: null,
     });
+
+    try { await notificationService.onTimesheetRecalled(userId, ts.week_start_date); } catch (e) { /* silent */ }
+
+    return result;
   }
 
   // ---- MANAGER ----
@@ -94,12 +112,21 @@ class TimesheetService {
       throw new AppError('Only submitted timesheets can be approved', 400);
     }
 
-    return timesheetRepository.updateStatus(timesheetId, {
+    const reviewer = await require('../repositories/userRepository').findById(reviewerId);
+    const result = await timesheetRepository.updateStatus(timesheetId, {
       status: TIMESHEET_STATUS.APPROVED,
       reviewed_by: reviewerId,
       reviewed_at: new Date(),
       comments: comments || null,
     });
+
+    // Notify employee
+    try {
+      const reviewerName = reviewer ? `${reviewer.first_name} ${reviewer.last_name}` : 'Manager';
+      await notificationService.onTimesheetApproved(ts.user_id, ts.week_start_date, reviewerName);
+    } catch (e) { /* silent */ }
+
+    return result;
   }
 
   async rejectTimesheet(reviewerId, timesheetId, comments) {
@@ -109,12 +136,20 @@ class TimesheetService {
       throw new AppError('Only submitted timesheets can be rejected', 400);
     }
 
-    return timesheetRepository.updateStatus(timesheetId, {
+    const reviewer = await require('../repositories/userRepository').findById(reviewerId);
+    const result = await timesheetRepository.updateStatus(timesheetId, {
       status: TIMESHEET_STATUS.REJECTED,
       reviewed_by: reviewerId,
       reviewed_at: new Date(),
       comments: comments || 'Rejected',
     });
+
+    try {
+      const reviewerName = reviewer ? `${reviewer.first_name} ${reviewer.last_name}` : 'Manager';
+      await notificationService.onTimesheetRejected(ts.user_id, ts.week_start_date, reviewerName, comments);
+    } catch (e) { /* silent */ }
+
+    return result;
   }
 
   // ---- REPORTS ----

@@ -15,10 +15,6 @@ module.exports = (sequelize) => {
       type: DataTypes.UUID,
       allowNull: false,
     },
-    rm_id: {
-      type: DataTypes.UUID,
-      allowNull: false,
-    },
     role: {
       type: DataTypes.ENUM('IC', 'MS', 'TPM', 'PM', 'QA', 'BA'),
       allowNull: false,
@@ -28,7 +24,6 @@ module.exports = (sequelize) => {
     indexes: [
       { fields: ['user_id', 'project_id'], unique: true },
       { fields: ['project_id'] },
-      { fields: ['rm_id'] },
     ],
   });
 

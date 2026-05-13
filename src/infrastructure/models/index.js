@@ -23,6 +23,7 @@ const Milestone = require('./Milestone')(sequelize);
 const Timesheet = require('./Timesheet')(sequelize);
 const TimesheetEntry = require('./TimesheetEntry')(sequelize);
 const Otp = require('./Otp')(sequelize);
+const Notification = require('./Notification')(sequelize);
 
 // ---- ASSOCIATIONS ----
 
@@ -30,9 +31,12 @@ const Otp = require('./Otp')(sequelize);
 Designation.hasMany(User, { foreignKey: 'designation_id', as: 'users' });
 User.belongsTo(Designation, { foreignKey: 'designation_id', as: 'designation' });
 
-// Project milestones
-Project.hasMany(Milestone, { foreignKey: 'project_id', as: 'milestones' });
-Milestone.belongsTo(Project, { foreignKey: 'project_id', as: 'project' });
+// User <-> Reporting Manager (self-referencing)
+User.belongsTo(User, { foreignKey: 'reporting_manager_id', as: 'reportingManager' });
+User.hasMany(User, { foreignKey: 'reporting_manager_id', as: 'directReports' });
+
+// Milestones — role-based templates (no project FK)
+// Kept standalone; filtered by role in queries
 
 // Project assignments
 Project.hasMany(ProjectAssignment, { foreignKey: 'project_id', as: 'assignments' });
@@ -40,10 +44,6 @@ ProjectAssignment.belongsTo(Project, { foreignKey: 'project_id', as: 'project' }
 
 User.hasMany(ProjectAssignment, { foreignKey: 'user_id', as: 'assignments' });
 ProjectAssignment.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
-
-// RM relationship
-User.hasMany(ProjectAssignment, { foreignKey: 'rm_id', as: 'managedAssignments' });
-ProjectAssignment.belongsTo(User, { foreignKey: 'rm_id', as: 'reportingManager' });
 
 // Timesheets
 User.hasMany(Timesheet, { foreignKey: 'user_id', as: 'timesheets' });
@@ -66,6 +66,10 @@ TimesheetEntry.belongsTo(Milestone, { foreignKey: 'milestone_id', as: 'milestone
 User.hasMany(Otp, { foreignKey: 'user_id', as: 'otps' });
 Otp.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// Notifications
+User.hasMany(Notification, { foreignKey: 'user_id', as: 'notifications' });
+Notification.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -77,4 +81,5 @@ module.exports = {
   Timesheet,
   TimesheetEntry,
   Otp,
+  Notification,
 };

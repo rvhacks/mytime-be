@@ -1,10 +1,14 @@
 const { User, Designation } = require('../infrastructure/models');
+const { Op } = require('sequelize');
 
 class UserRepository {
   async findById(id) {
     return User.findByPk(id, {
       attributes: { exclude: ['password'] },
-      include: [{ model: Designation, as: 'designation' }],
+      include: [
+        { model: Designation, as: 'designation' },
+        { model: User, as: 'reportingManager', attributes: ['id', 'first_name', 'last_name', 'email'] },
+      ],
     });
   }
 
@@ -16,16 +20,34 @@ class UserRepository {
     return User.findOne({
       where: { email },
       attributes: { exclude: ['password'] },
-      include: [{ model: Designation, as: 'designation' }],
+      include: [
+        { model: Designation, as: 'designation' },
+        { model: User, as: 'reportingManager', attributes: ['id', 'first_name', 'last_name', 'email'] },
+      ],
     });
   }
 
   async findAll(options = {}) {
+    const { where = {}, search, ...rest } = options;
+    const finalWhere = { ...where };
+
+    if (search) {
+      finalWhere[Op.or] = [
+        { first_name: { [Op.iLike]: `%${search}%` } },
+        { last_name: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
     return User.findAndCountAll({
+      where: finalWhere,
       attributes: { exclude: ['password'] },
-      include: [{ model: Designation, as: 'designation' }],
+      include: [
+        { model: Designation, as: 'designation' },
+        { model: User, as: 'reportingManager', attributes: ['id', 'first_name', 'last_name', 'email'] },
+      ],
       order: [['created_at', 'DESC']],
-      ...options,
+      ...rest,
     });
   }
 

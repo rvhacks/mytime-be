@@ -10,6 +10,7 @@ router.use(authenticate);
 // Employee timesheet
 router.get('/my', timesheetController.getMyTimesheets);
 router.get('/week', timesheetController.getMyTimesheet);
+router.get('/assigned-projects', timesheetController.getMyAssignedProjects);
 router.post('/save', validate(saveTimesheetSchema), timesheetController.saveTimesheet);
 router.post('/submit', validate(submitTimesheetSchema), timesheetController.submitTimesheet);
 router.post('/recall/:id', timesheetController.recallTimesheet);
@@ -18,6 +19,9 @@ router.get('/detail/:id', timesheetController.getTimesheetDetail);
 // Manager approvals
 router.get('/approvals', authorize('manager', 'admin'), timesheetController.getPendingApprovals);
 router.post('/approvals/action', authorize('manager', 'admin'), validate(approvalActionSchema), timesheetController.approvalAction);
+
+// Admin: view employee timesheets
+router.get('/employee/:employeeId', authorize('admin'), timesheetController.getEmployeeTimesheets);
 
 // Reports
 router.get('/reports', timesheetController.getReports);

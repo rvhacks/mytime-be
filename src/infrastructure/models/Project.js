@@ -36,12 +36,14 @@ module.exports = (sequelize) => {
       type: DataTypes.ENUM('active', 'completed', 'on-hold'),
       defaultValue: 'active',
     },
-    reporting_managers: {
-      type: DataTypes.ARRAY(DataTypes.UUID),
-      defaultValue: [],
+    deleted_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
   }, {
     tableName: 'projects',
+    paranoid: true,          // enables soft-delete via deleted_at
+    deletedAt: 'deleted_at',
     indexes: [
       { fields: ['project_code'], unique: true },
       { fields: ['status'] },

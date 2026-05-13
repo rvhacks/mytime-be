@@ -1,23 +1,29 @@
-const { Milestone, Project } = require('../infrastructure/models');
+const { Milestone } = require('../infrastructure/models');
+const { Op } = require('sequelize');
 
 class MilestoneRepository {
   async findAll(options = {}) {
+    const { where = {}, search, ...rest } = options;
+    const finalWhere = { ...where };
+
+    if (search) {
+      finalWhere.name = { [Op.iLike]: `%${search}%` };
+    }
+
     return Milestone.findAndCountAll({
-      include: [{ model: Project, as: 'project', attributes: ['id', 'name', 'color'] }],
-      order: [['created_at', 'DESC']],
-      ...options,
+      where: finalWhere,
+      order: [['name', 'ASC']],
+      ...rest,
     });
   }
 
   async findById(id) {
-    return Milestone.findByPk(id, {
-      include: [{ model: Project, as: 'project' }],
-    });
+    return Milestone.findByPk(id);
   }
 
-  async findByProject(projectId) {
+  async findByRole(role) {
     return Milestone.findAll({
-      where: { project_id: projectId },
+      where: { role },
       order: [['name', 'ASC']],
     });
   }

@@ -7,10 +7,6 @@ module.exports = (sequelize) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
-    project_id: {
-      type: DataTypes.UUID,
-      allowNull: false,
-    },
     name: {
       type: DataTypes.STRING(255),
       allowNull: false,
@@ -21,17 +17,12 @@ module.exports = (sequelize) => {
     },
     role: {
       type: DataTypes.ENUM('IC', 'MS', 'TPM', 'PM', 'QA', 'BA'),
-      allowNull: true,
-    },
-    status: {
-      type: DataTypes.ENUM('pending', 'in-progress', 'completed'),
-      defaultValue: 'pending',
+      allowNull: false,
     },
   }, {
     tableName: 'milestones',
     indexes: [
-      { fields: ['project_id'] },
-      { fields: ['status'] },
+      { fields: ['role'] },
     ],
   });
 

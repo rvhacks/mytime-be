@@ -52,6 +52,10 @@ module.exports = (sequelize) => {
       type: DataTypes.DATEONLY,
       allowNull: true,
     },
+    reporting_manager_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
     status: {
       type: DataTypes.ENUM('active', 'inactive'),
       defaultValue: 'active',
@@ -63,6 +67,7 @@ module.exports = (sequelize) => {
       { fields: ['role'] },
       { fields: ['status'] },
       { fields: ['designation_id'] },
+      { fields: ['reporting_manager_id'] },
     ],
   });
 
