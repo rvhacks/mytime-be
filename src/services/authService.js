@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const path = require('path');
 const userRepository = require('../repositories/userRepository');
 const { User, Otp } = require('../infrastructure/models');
 const { generateToken, generateRefreshToken } = require('../utils/jwt');
@@ -26,7 +27,12 @@ class AuthService {
     });
 
     const userJson = userData.toJSON ? userData.toJSON() : userData;
-    return { token, refreshToken, user: { ...userJson, isManager: directReportCount > 0 } };
+    // Build avatarUrl from avatar_path
+    let avatarUrl = null;
+    if (userJson.avatar_path) {
+      avatarUrl = `/uploads/avatars/${path.basename(userJson.avatar_path)}`;
+    }
+    return { token, refreshToken, user: { ...userJson, avatarUrl, isManager: directReportCount > 0 } };
   }
 
   async forgotPassword(email) {

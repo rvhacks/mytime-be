@@ -31,7 +31,11 @@ class AdminService {
   }
 
   // ---- EMPLOYEES ----
-  async getEmployees(options) { return userRepository.findAll(options); }
+  async getEmployees(options) {
+    // Exclude admin from employee list
+    const where = { ...(options.where || {}), role: { [require('sequelize').Op.ne]: 'admin' } };
+    return userRepository.findAll({ ...options, where });
+  }
 
   async createEmployee(data) {
     const existingEmail = await userRepository.findByEmail(data.email);
