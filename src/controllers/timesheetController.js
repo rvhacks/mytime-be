@@ -181,16 +181,31 @@ exports.getMilestonesByRole = catchAsync(async (req, res) => {
 // ===========================
 
 exports.getProjectDetail = catchAsync(async (req, res) => {
-  const { Project, ProjectAssignment, User } = require('../infrastructure/models');
+  const { Project, ProjectAssignment, User, Milestone } = require('../infrastructure/models');
   const project = await Project.findByPk(req.params.projectId, {
-    include: [{
-      model: ProjectAssignment,
-      as: 'assignments',
-      include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'email'] }],
-    }],
+    include: [
+      {
+        model: ProjectAssignment,
+        as: 'assignments',
+        include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'email'] }],
+      },
+    ],
   });
   if (!project) return res.status(404).json({ status: 'fail', message: 'Project not found' });
-  res.json({ status: 'success', data: project });
+
+  // Fetch milestones for the roles used in this project's assignments
+  const roles = [...new Set(project.assignments.map(a => a.role).filter(Boolean))];
+  let milestones = [];
+  if (roles.length > 0) {
+    milestones = await Milestone.findAll({
+      where: { role: { [require('sequelize').Op.in]: roles } },
+      attributes: ['id', 'name', 'role'],
+    });
+  }
+
+  const data = project.toJSON();
+  data.milestones = milestones.map(m => ({ id: m.id, name: m.name, role: m.role, status: 'pending' }));
+  res.json({ status: 'success', data });
 });
 
 // ===========================
