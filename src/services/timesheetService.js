@@ -52,7 +52,7 @@ class TimesheetService {
   async saveEntries(userId, data) {
     const { weekStartDate, weekEndDate, entries } = data;
 
-    return sequelize.transaction(async (t) => {
+    await sequelize.transaction(async (t) => {
       // Get or create the week container
       let ts = await Timesheet.findOne({
         where: { user_id: userId, week_start_date: weekStartDate },
@@ -110,10 +110,10 @@ class TimesheetService {
           await TimesheetEntry.bulkCreate(entryData, { transaction: t });
         }
       }
-
-      // Return full timesheet with all entries
-      return this.getTimesheetByWeek(userId, weekStartDate);
     });
+
+    // Return full timesheet AFTER transaction commits
+    return this.getTimesheetByWeek(userId, weekStartDate);
   }
 
   // ===========================
@@ -124,14 +124,14 @@ class TimesheetService {
    * Submit specific entry IDs. Only draft/recalled/rejected entries can be submitted.
    */
   async submitEntries(userId, entryIds) {
-    return sequelize.transaction(async (t) => {
+    let weekStart;
+    await sequelize.transaction(async (t) => {
       const entries = await TimesheetEntry.findAll({
         where: { id: { [Op.in]: entryIds } },
         include: [{ model: Timesheet, as: 'timesheet', attributes: ['user_id', 'week_start_date'] }],
         transaction: t,
       });
 
-      // Verify ownership and eligibility
       for (const entry of entries) {
         if (entry.timesheet.user_id !== userId) {
           throw new AppError('Unauthorized: entry does not belong to you', 403);
@@ -141,23 +141,19 @@ class TimesheetService {
         }
       }
 
-      // Update status
       await TimesheetEntry.update(
         { status: ENTRY_STATUS.SUBMITTED, submitted_at: new Date() },
         { where: { id: { [Op.in]: entryIds } }, transaction: t }
       );
 
-      // Notify employee
-      if (entries.length > 0) {
-        try {
-          await notificationService.onTimesheetSubmitted(userId, entries[0].timesheet.week_start_date);
-        } catch { /* silent */ }
-      }
+      weekStart = entries[0]?.timesheet?.week_start_date;
 
-      // Return updated timesheet
-      const weekStart = entries[0]?.timesheet?.week_start_date;
-      return weekStart ? this.getTimesheetByWeek(userId, weekStart) : null;
+      if (entries.length > 0) {
+        try { await notificationService.onTimesheetSubmitted(userId, weekStart); } catch { /* silent */ }
+      }
     });
+
+    return weekStart ? this.getTimesheetByWeek(userId, weekStart) : null;
   }
 
   // ===========================
@@ -165,7 +161,8 @@ class TimesheetService {
   // ===========================
 
   async recallEntries(userId, entryIds) {
-    return sequelize.transaction(async (t) => {
+    let weekStart;
+    await sequelize.transaction(async (t) => {
       const entries = await TimesheetEntry.findAll({
         where: { id: { [Op.in]: entryIds } },
         include: [{ model: Timesheet, as: 'timesheet', attributes: ['user_id', 'week_start_date'] }],
@@ -186,15 +183,14 @@ class TimesheetService {
         { where: { id: { [Op.in]: entryIds } }, transaction: t }
       );
 
-      if (entries.length > 0) {
-        try {
-          await notificationService.onTimesheetRecalled(userId, entries[0].timesheet.week_start_date);
-        } catch { /* silent */ }
-      }
+      weekStart = entries[0]?.timesheet?.week_start_date;
 
-      const weekStart = entries[0]?.timesheet?.week_start_date;
-      return weekStart ? this.getTimesheetByWeek(userId, weekStart) : null;
+      if (entries.length > 0) {
+        try { await notificationService.onTimesheetRecalled(userId, weekStart); } catch { /* silent */ }
+      }
     });
+
+    return weekStart ? this.getTimesheetByWeek(userId, weekStart) : null;
   }
 
   // ===========================
