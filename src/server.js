@@ -11,6 +11,28 @@ async function startServer() {
     await sequelize.authenticate();
     logger.info('✅ Database connection established');
 
+    // Add missing columns (safe: IF NOT EXISTS / catches "already exists")
+    const safeAddColumn = async (table, column, type, extra = '') => {
+      try {
+        await sequelize.query(`ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "${column}" ${type} ${extra}`);
+      } catch (e) {
+        // Column already exists — ignore
+      }
+    };
+
+    await safeAddColumn('users', 'employee_id', 'VARCHAR(20)', 'UNIQUE');
+    await safeAddColumn('projects', 'project_id', 'VARCHAR(20)', 'UNIQUE');
+    await safeAddColumn('projects', 'partner_project_id', 'VARCHAR(50)');
+    await safeAddColumn('timesheet_entries', 'resubmission_count', 'INTEGER', 'DEFAULT 0');
+    await safeAddColumn('timesheet_entries', 'rejection_history', 'JSONB', "DEFAULT '[]'::jsonb");
+
+    // Widen color column if it's still VARCHAR(7)
+    try {
+      await sequelize.query(`ALTER TABLE "projects" ALTER COLUMN "color" TYPE VARCHAR(20)`);
+    } catch { /* already correct type */ }
+
+    logger.info('✅ Database schema updated');
+
     // Start server
     app.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT} (${config.nodeEnv})`);
