@@ -33,7 +33,16 @@ class AuthService {
       const filename = userJson.avatar_path.includes('/') ? path.basename(userJson.avatar_path) : userJson.avatar_path;
       avatarUrl = `/uploads/avatars/${filename}`;
     }
-    return { token, refreshToken, user: { ...userJson, avatarUrl, isManager: directReportCount > 0 } };
+    return {
+      token,
+      refreshToken,
+      user: {
+        ...userJson,
+        avatarUrl,
+        isManager: directReportCount > 0,
+        mustChangePassword: !!user.must_change_password,
+      },
+    };
   }
 
   async forgotPassword(email) {
@@ -84,6 +93,24 @@ class AuthService {
     await Otp.update({ used: true }, { where: { id: otpRecord.id } });
 
     return { message: 'Password reset successfully' };
+  }
+
+  async changePassword(userId, currentPassword, newPassword) {
+    const user = await User.findByPk(userId);
+    if (!user) throw new AppError('User not found', 404);
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) throw new AppError('Current password is incorrect', 400);
+
+    if (newPassword.length < 8) throw new AppError('New password must be at least 8 characters', 400);
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    await User.update(
+      { password: hashedPassword, must_change_password: false },
+      { where: { id: userId } }
+    );
+
+    return { message: 'Password changed successfully' };
   }
 }
 

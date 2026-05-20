@@ -63,4 +63,14 @@ router.post('/reset-password', validate(resetPasswordSchema), authController.res
  */
 router.get('/me', authenticate, authController.me);
 
+/**
+ * @swagger
+ * /api/auth/change-password:
+ *   post:
+ *     summary: Change password (used for forced password change on first login)
+ *     tags: [Auth]
+ *     security: [{ bearerAuth: [] }]
+ */
+router.post('/change-password', authenticate, authController.changePassword);
+
 module.exports = router;

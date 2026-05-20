@@ -25,3 +25,9 @@ exports.resetPassword = catchAsync(async (req, res) => {
 exports.me = catchAsync(async (req, res) => {
   res.json({ status: 'success', data: { user: req.user } });
 });
+
+exports.changePassword = catchAsync(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
+  res.json({ status: 'success', data: result });
+});

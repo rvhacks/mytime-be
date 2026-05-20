@@ -3,7 +3,7 @@ const { Op } = require('sequelize');
 
 class MilestoneRepository {
   async findAll(options = {}) {
-    const { where = {}, search, ...rest } = options;
+    const { where = {}, search, order, ...rest } = options;
     const finalWhere = { ...where };
 
     if (search) {
@@ -12,8 +12,8 @@ class MilestoneRepository {
 
     return Milestone.findAndCountAll({
       where: finalWhere,
-      order: [['name', 'ASC']],
       ...rest,
+      order: [['name', 'ASC']],
     });
   }
 

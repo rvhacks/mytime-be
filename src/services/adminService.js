@@ -94,6 +94,7 @@ class AdminService {
       joining_date: data.joiningDate,
       reporting_manager_id: data.reportingManagerId || null,
       status: 'active',
+      must_change_password: true,
     });
 
     const userData = await userRepository.findById(user.id);
@@ -132,7 +133,7 @@ class AdminService {
     const autoPassword = generateAutoPassword(fullUser.first_name, fullUser.mobile, fullUser.dob);
     const hashedPassword = await bcrypt.hash(autoPassword, 12);
 
-    await userRepository.update(id, { password: hashedPassword });
+    await userRepository.update(id, { password: hashedPassword, must_change_password: true });
 
     try { await notificationService.onPasswordReset(id, fullUser.first_name); } catch (e) { /* silent */ }
 

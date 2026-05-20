@@ -28,7 +28,7 @@ class UserRepository {
   }
 
   async findAll(options = {}) {
-    const { where = {}, search, ...rest } = options;
+    const { where = {}, search, order, ...rest } = options;
     const finalWhere = { ...where };
 
     if (search) {
@@ -46,8 +46,8 @@ class UserRepository {
         { model: Designation, as: 'designation' },
         { model: User, as: 'reportingManager', attributes: ['id', 'first_name', 'last_name', 'email'] },
       ],
-      order: [['first_name', 'ASC'], ['last_name', 'ASC']],
       ...rest,
+      order: [['first_name', 'ASC'], ['last_name', 'ASC']],
     });
   }
 

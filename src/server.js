@@ -25,6 +25,7 @@ async function startServer() {
     await safeAddColumn('projects', 'partner_project_id', 'VARCHAR(50)');
     await safeAddColumn('timesheet_entries', 'resubmission_count', 'INTEGER', 'DEFAULT 0');
     await safeAddColumn('timesheet_entries', 'rejection_history', 'JSONB', "DEFAULT '[]'::jsonb");
+    await safeAddColumn('users', 'must_change_password', 'BOOLEAN', 'DEFAULT false');
 
     // Widen color column if it's still VARCHAR(7)
     try {

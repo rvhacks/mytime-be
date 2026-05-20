@@ -3,7 +3,7 @@ const { Op } = require('sequelize');
 
 class ProjectRepository {
   async findAll(options = {}) {
-    const { where = {}, search, status, ...rest } = options;
+    const { where = {}, search, status, order, ...rest } = options;
     const finalWhere = { ...where };
 
     if (search) {
@@ -21,8 +21,8 @@ class ProjectRepository {
     return Project.findAndCountAll({
       where: finalWhere,
       include: [{ model: ProjectAssignment, as: 'assignments' }],
-      order: [['name', 'ASC']],
       ...rest,
+      order: [['name', 'ASC']],
     });
   }
 
