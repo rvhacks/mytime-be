@@ -29,6 +29,8 @@ router.get('/employees', adminController.getEmployees);
 router.post('/employees', validate(createEmployeeSchema), adminController.createEmployee);
 router.put('/employees/:id', adminController.updateEmployee);
 router.post('/employees/:id/reset-password', adminController.resetEmployeePassword);
+router.put('/employees/:id/deactivate', adminController.deactivateEmployee);
+router.put('/employees/:id/activate', adminController.activateEmployee);
 router.delete('/employees/:id', adminController.deleteEmployee);
 
 // Projects
@@ -48,5 +50,10 @@ router.get('/milestones/role/:role', adminController.getMilestonesByRole);
 router.post('/milestones', validate(createMilestoneSchema), adminController.createMilestone);
 router.put('/milestones/:id', adminController.updateMilestone);
 router.delete('/milestones/:id', adminController.deleteMilestone);
+
+// Admin Approvals: Manager Dashboard
+router.get('/approvals/managers', adminController.getManagersWithPendingApprovals);
+router.get('/approvals/manager/:managerId/entries', adminController.getManagerDirectReportEntries);
+router.post('/approvals/remind', adminController.sendBulkReminders);
 
 module.exports = router;

@@ -7,6 +7,11 @@ module.exports = (sequelize) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
+    employee_id: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      unique: true,
+    },
     first_name: {
       type: DataTypes.STRING(100),
       allowNull: false,
@@ -68,6 +73,7 @@ module.exports = (sequelize) => {
     tableName: 'users',
     indexes: [
       { fields: ['email'], unique: true },
+      { fields: ['employee_id'], unique: true },
       { fields: ['role'] },
       { fields: ['status'] },
       { fields: ['designation_id'] },

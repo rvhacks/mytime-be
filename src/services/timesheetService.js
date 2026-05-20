@@ -128,7 +128,10 @@ class TimesheetService {
     await sequelize.transaction(async (t) => {
       const entries = await TimesheetEntry.findAll({
         where: { id: { [Op.in]: entryIds } },
-        include: [{ model: Timesheet, as: 'timesheet', attributes: ['user_id', 'week_start_date'] }],
+        include: [
+          { model: Timesheet, as: 'timesheet', attributes: ['user_id', 'week_start_date'] },
+          { model: User, as: 'reviewer', attributes: ['id', 'first_name', 'last_name'] },
+        ],
         transaction: t,
       });
 
@@ -139,12 +142,31 @@ class TimesheetService {
         if (![ENTRY_STATUS.DRAFT, ENTRY_STATUS.RECALLED, ENTRY_STATUS.REJECTED].includes(entry.status)) {
           throw new AppError(`Entry ${entry.id} cannot be submitted (status: ${entry.status})`, 400);
         }
-      }
 
-      await TimesheetEntry.update(
-        { status: ENTRY_STATUS.SUBMITTED, submitted_at: new Date() },
-        { where: { id: { [Op.in]: entryIds } }, transaction: t }
-      );
+        // If resubmitting a rejected entry, track rejection history
+        if (entry.status === ENTRY_STATUS.REJECTED) {
+          const history = entry.rejection_history || [];
+          history.push({
+            rejectedAt: entry.reviewed_at ? new Date(entry.reviewed_at).toISOString() : new Date().toISOString(),
+            reviewerName: entry.reviewer ? `${entry.reviewer.first_name} ${entry.reviewer.last_name}` : 'Unknown',
+            comments: entry.review_comments || '',
+          });
+          await entry.update({
+            status: ENTRY_STATUS.SUBMITTED,
+            submitted_at: new Date(),
+            resubmission_count: (entry.resubmission_count || 0) + 1,
+            rejection_history: history,
+            review_comments: null,
+            reviewed_by: null,
+            reviewed_at: null,
+          }, { transaction: t });
+        } else {
+          await entry.update({
+            status: ENTRY_STATUS.SUBMITTED,
+            submitted_at: new Date(),
+          }, { transaction: t });
+        }
+      }
 
       weekStart = entries[0]?.timesheet?.week_start_date;
 

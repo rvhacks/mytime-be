@@ -27,7 +27,8 @@ exports.deleteDesignation = catchAsync(async (req, res) => {
 // ---- EMPLOYEES ----
 exports.getEmployees = catchAsync(async (req, res) => {
   const { page, limit, offset, search, sortBy, sortOrder } = buildPaginationQuery(req.query);
-  const data = await adminService.getEmployees({ limit, offset, search, order: [[sortBy, sortOrder]] });
+  const status = req.query.status || 'all'; // active, inactive, all
+  const data = await adminService.getEmployees({ limit, offset, search, status, order: [[sortBy, sortOrder]] });
   res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
@@ -46,15 +47,27 @@ exports.resetEmployeePassword = catchAsync(async (req, res) => {
   res.json({ status: 'success', data });
 });
 
+exports.deactivateEmployee = catchAsync(async (req, res) => {
+  const data = await adminService.deactivateEmployee(req.params.id);
+  res.json({ status: 'success', data, message: 'Employee deactivated' });
+});
+
+exports.activateEmployee = catchAsync(async (req, res) => {
+  const data = await adminService.activateEmployee(req.params.id);
+  res.json({ status: 'success', data, message: 'Employee activated' });
+});
+
+// Keep deleteEmployee for backward compat — it now deactivates
 exports.deleteEmployee = catchAsync(async (req, res) => {
   await adminService.deleteEmployee(req.params.id);
-  res.json({ status: 'success', message: 'Employee deleted' });
+  res.json({ status: 'success', message: 'Employee deactivated' });
 });
 
 // ---- PROJECTS ----
 exports.getProjects = catchAsync(async (req, res) => {
   const { page, limit, offset, search, sortBy, sortOrder } = buildPaginationQuery(req.query);
-  const data = await adminService.getProjects({ limit, offset, search, order: [[sortBy, sortOrder]] });
+  const status = req.query.status || 'all';
+  const data = await adminService.getProjects({ limit, offset, search, status, order: [[sortBy, sortOrder]] });
   res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
@@ -75,8 +88,8 @@ exports.deleteProject = catchAsync(async (req, res) => {
 
 // ---- ASSIGNMENTS ----
 exports.getAssignments = catchAsync(async (req, res) => {
-  const { page, limit, offset, sortBy, sortOrder } = buildPaginationQuery(req.query);
-  const data = await adminService.getAssignments({ limit, offset, order: [[sortBy, sortOrder]] });
+  const { page, limit, offset, search, sortBy, sortOrder } = buildPaginationQuery(req.query);
+  const data = await adminService.getAssignments({ limit, offset, search, order: [[sortBy, sortOrder]] });
   res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
@@ -119,7 +132,7 @@ exports.deleteMilestone = catchAsync(async (req, res) => {
 
 // ---- DASHBOARD STATS ----
 exports.getDashboardStats = catchAsync(async (req, res) => {
-  const data = await adminService.getDashboardStats(req.user.id);
+  const data = await adminService.getDashboardStats(req.user);
   res.json({ status: 'success', data });
 });
 
@@ -134,4 +147,25 @@ exports.getRecentActivity = catchAsync(async (req, res) => {
 exports.getRoleConstants = catchAsync(async (req, res) => {
   const { PROJECT_ROLES } = require('../constants');
   res.json({ status: 'success', data: PROJECT_ROLES });
+});
+
+// ---- ADMIN APPROVALS: Manager Dashboard ----
+exports.getManagersWithPendingApprovals = catchAsync(async (req, res) => {
+  const data = await adminService.getManagersWithPendingApprovals();
+  res.json({ status: 'success', data });
+});
+
+exports.getManagerDirectReportEntries = catchAsync(async (req, res) => {
+  const { month } = req.query;
+  const data = await adminService.getManagerDirectReportEntries(req.params.managerId, month);
+  res.json({ status: 'success', data });
+});
+
+exports.sendBulkReminders = catchAsync(async (req, res) => {
+  const { managerIds } = req.body;
+  if (!managerIds || !Array.isArray(managerIds) || managerIds.length === 0) {
+    return res.status(400).json({ status: 'error', message: 'managerIds array is required' });
+  }
+  const data = await adminService.sendBulkReminders(managerIds);
+  res.json({ status: 'success', data, message: 'Reminders sent' });
 });

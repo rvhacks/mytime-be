@@ -7,6 +7,11 @@ module.exports = (sequelize) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
+    project_id: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      unique: true,
+    },
     project_code: {
       type: DataTypes.STRING(20),
       allowNull: false,
@@ -21,8 +26,12 @@ module.exports = (sequelize) => {
       allowNull: true,
     },
     color: {
-      type: DataTypes.STRING(10),
+      type: DataTypes.STRING(20),
       defaultValue: '#6366f1',
+    },
+    partner_project_id: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
     },
     start_date: {
       type: DataTypes.DATEONLY,
@@ -46,6 +55,7 @@ module.exports = (sequelize) => {
     deletedAt: 'deleted_at',
     indexes: [
       { fields: ['project_code'], unique: true },
+      { fields: ['project_id'], unique: true },
       { fields: ['status'] },
     ],
   });

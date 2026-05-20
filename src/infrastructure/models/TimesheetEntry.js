@@ -56,6 +56,14 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    resubmission_count: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+    },
+    rejection_history: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+    },
   }, {
     tableName: 'timesheet_entries',
     indexes: [
