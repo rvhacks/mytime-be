@@ -33,19 +33,24 @@ async function startServer() {
 
     logger.info('✅ Database schema updated');
 
+    // Convert existing 4-digit year employee_ids (CT2026-NNNN → CT26-NNNN)
+    await sequelize.query(
+      `UPDATE users SET employee_id = CONCAT('CT', SUBSTRING(employee_id, 5, 2), SUBSTRING(employee_id, 7)) WHERE employee_id ~ '^CT[0-9]{4}-'`
+    ).catch(() => { /* ignore if no rows */ });
+
     // Backfill employee_id for existing employees without one
     const [empsWithoutId] = await sequelize.query(
       `SELECT id FROM users WHERE (employee_id IS NULL OR employee_id = '') AND role != 'admin' ORDER BY created_at ASC`
     );
     if (empsWithoutId.length > 0) {
-      const year = new Date().getFullYear();
-      const prefix = `CT${year}-`;
+      const yy = String(new Date().getFullYear()).slice(-2);
+      const prefix = `CT${yy}-`;
       const [lastEmp] = await sequelize.query(
         `SELECT employee_id FROM users WHERE employee_id LIKE '${prefix}%' ORDER BY employee_id DESC LIMIT 1`
       );
       let nextNum = 1;
       if (lastEmp.length > 0 && lastEmp[0].employee_id) {
-        const match = lastEmp[0].employee_id.match(/CT\d{4}-(\d+)/);
+        const match = lastEmp[0].employee_id.match(/CT\d{2}-(\d+)/);
         if (match) nextNum = parseInt(match[1], 10) + 1;
       }
       for (const emp of empsWithoutId) {

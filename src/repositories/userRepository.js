@@ -46,7 +46,7 @@ class UserRepository {
         { model: Designation, as: 'designation' },
         { model: User, as: 'reportingManager', attributes: ['id', 'first_name', 'last_name', 'email'] },
       ],
-      order: [['created_at', 'DESC']],
+      order: [['first_name', 'ASC'], ['last_name', 'ASC']],
       ...rest,
     });
   }

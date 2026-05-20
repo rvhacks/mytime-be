@@ -21,7 +21,7 @@ class ProjectRepository {
     return Project.findAndCountAll({
       where: finalWhere,
       include: [{ model: ProjectAssignment, as: 'assignments' }],
-      order: [['created_at', 'DESC']],
+      order: [['name', 'ASC']],
       ...rest,
     });
   }

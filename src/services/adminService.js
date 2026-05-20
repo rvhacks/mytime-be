@@ -42,12 +42,12 @@ class AdminService {
     return userRepository.findAll({ ...options, where });
   }
 
-  /** Auto-generate employee_id: CT(Year)-NNNN e.g. CT2026-0001 */
+  /** Auto-generate employee_id: CT(YY)-NNNN e.g. CT26-0001 */
   async _generateEmployeeId() {
     const { User } = require('../infrastructure/models');
     const { Op } = require('sequelize');
-    const year = new Date().getFullYear();
-    const prefix = `CT${year}-`;
+    const yy = String(new Date().getFullYear()).slice(-2);
+    const prefix = `CT${yy}-`;
     // Find the highest existing employee_id for this year
     const last = await User.findOne({
       where: { employee_id: { [Op.like]: `${prefix}%` } },
@@ -56,7 +56,7 @@ class AdminService {
     });
     let nextNum = 1;
     if (last && last.employee_id) {
-      const match = last.employee_id.match(/CT\d{4}-(\d+)/);
+      const match = last.employee_id.match(/CT\d{2}-(\d+)/);
       if (match) nextNum = parseInt(match[1], 10) + 1;
     }
     return `${prefix}${String(nextNum).padStart(4, '0')}`;
@@ -472,6 +472,11 @@ class AdminService {
         totalDirectReports: directReportIds.length,
       });
     }
+    // Sort: highest pending count first, then alphabetical
+    result.sort((a, b) => {
+      if (b.pendingCount !== a.pendingCount) return b.pendingCount - a.pendingCount;
+      return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+    });
 
     return result;
   }
