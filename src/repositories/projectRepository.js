@@ -3,14 +3,19 @@ const { Op } = require('sequelize');
 
 class ProjectRepository {
   async findAll(options = {}) {
-    const { where = {}, search, ...rest } = options;
+    const { where = {}, search, status, ...rest } = options;
     const finalWhere = { ...where };
 
     if (search) {
       finalWhere[Op.or] = [
         { name: { [Op.iLike]: `%${search}%` } },
         { project_code: { [Op.iLike]: `%${search}%` } },
+        { project_id: { [Op.iLike]: `%${search}%` } },
       ];
+    }
+
+    if (status && status !== 'all') {
+      finalWhere.status = status;
     }
 
     return Project.findAndCountAll({

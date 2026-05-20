@@ -27,10 +27,11 @@ class AuthService {
     });
 
     const userJson = userData.toJSON ? userData.toJSON() : userData;
-    // Build avatarUrl from avatar_path
+    // Build avatarUrl from avatar_path (handles both absolute path and filename)
     let avatarUrl = null;
     if (userJson.avatar_path) {
-      avatarUrl = `/uploads/avatars/${path.basename(userJson.avatar_path)}`;
+      const filename = userJson.avatar_path.includes('/') ? path.basename(userJson.avatar_path) : userJson.avatar_path;
+      avatarUrl = `/uploads/avatars/${filename}`;
     }
     return { token, refreshToken, user: { ...userJson, avatarUrl, isManager: directReportCount > 0 } };
   }

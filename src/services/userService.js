@@ -25,7 +25,9 @@ class UserService {
     const json = user.toJSON();
     let avatarUrl = null;
     if (json.avatar_path) {
-      avatarUrl = `/uploads/avatars/${path.basename(json.avatar_path)}`;
+      // Handle both legacy absolute paths and new filename-only format
+      const filename = json.avatar_path.includes('/') ? path.basename(json.avatar_path) : json.avatar_path;
+      avatarUrl = `/uploads/avatars/${filename}`;
     }
 
     return { ...json, avatarUrl, isManager: directReportCount > 0 };
@@ -45,6 +47,7 @@ class UserService {
 
   /**
    * Upload avatar to LOCAL filesystem (no S3).
+   * Stores ONLY the filename in avatar_path (not absolute path).
    */
   async uploadAvatar(userId, file) {
     const user = await userRepository.findById(userId);
@@ -52,7 +55,8 @@ class UserService {
 
     // Delete old avatar if exists
     if (user.avatar_path) {
-      try { fs.unlinkSync(user.avatar_path); } catch { /* ignore */ }
+      const oldFile = user.avatar_path.includes('/') ? user.avatar_path : path.join(UPLOAD_DIR, user.avatar_path);
+      try { fs.unlinkSync(oldFile); } catch { /* ignore */ }
     }
 
     // Save with unique name
@@ -61,8 +65,8 @@ class UserService {
     const filepath = path.join(UPLOAD_DIR, filename);
     fs.writeFileSync(filepath, file.buffer);
 
-    // Update DB
-    await User.update({ avatar_path: filepath }, { where: { id: userId } });
+    // Store ONLY filename in DB
+    await User.update({ avatar_path: filename }, { where: { id: userId } });
 
     const avatarUrl = `/uploads/avatars/${filename}`;
     return { avatarUrl };

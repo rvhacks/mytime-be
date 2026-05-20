@@ -42,22 +42,24 @@ class AdminService {
     return userRepository.findAll({ ...options, where });
   }
 
-  /** Auto-generate employee_id: CT-EMP-NNNN */
+  /** Auto-generate employee_id: CT(Year)-NNNN e.g. CT2026-0001 */
   async _generateEmployeeId() {
     const { User } = require('../infrastructure/models');
     const { Op } = require('sequelize');
-    // Find the highest existing employee_id
+    const year = new Date().getFullYear();
+    const prefix = `CT${year}-`;
+    // Find the highest existing employee_id for this year
     const last = await User.findOne({
-      where: { employee_id: { [Op.like]: 'CT-EMP-%' } },
+      where: { employee_id: { [Op.like]: `${prefix}%` } },
       order: [['employee_id', 'DESC']],
       attributes: ['employee_id'],
     });
     let nextNum = 1;
     if (last && last.employee_id) {
-      const match = last.employee_id.match(/CT-EMP-(\d+)/);
+      const match = last.employee_id.match(/CT\d{4}-(\d+)/);
       if (match) nextNum = parseInt(match[1], 10) + 1;
     }
-    return `CT-EMP-${String(nextNum).padStart(4, '0')}`;
+    return `${prefix}${String(nextNum).padStart(4, '0')}`;
   }
 
   async createEmployee(data) {
@@ -435,9 +437,9 @@ class AdminService {
     const { User, TimesheetEntry, Timesheet } = require('../infrastructure/models');
     const { Op, literal } = require('sequelize');
 
-    // Find all users who have direct reports
+    // Find all users who have direct reports (exclude admin)
     const managers = await User.findAll({
-      where: { status: 'active' },
+      where: { status: 'active', role: { [Op.ne]: 'admin' } },
       attributes: { exclude: ['password'] },
       include: [{
         model: User, as: 'directReports',
