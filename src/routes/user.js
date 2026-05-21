@@ -12,5 +12,7 @@ router.get('/profile', userController.getProfile);
 router.put('/profile', userController.updateProfile);
 router.post('/avatar', upload.single('avatar'), userController.uploadAvatar);
 router.put('/change-password', userController.changePassword);
+router.get('/report', userController.getMyReport);
+router.get('/team', userController.getMyTeam);
 
 module.exports = router;

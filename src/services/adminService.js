@@ -588,36 +588,41 @@ class AdminService {
 
     const hoursSql = `COALESCE(te.hours_mon,0) + COALESCE(te.hours_tue,0) + COALESCE(te.hours_wed,0) + COALESCE(te.hours_thu,0) + COALESCE(te.hours_fri,0) + COALESCE(te.hours_sat,0) + COALESCE(te.hours_sun,0)`;
 
-    let whereClauses = `t.week_start_date >= :startDate AND t.week_start_date <= :endDate
-      AND te.status IN ('submitted', 'approved')
-      AND u.role != 'admin'`;
+    // Build optional JOIN conditions for timesheet_entries
+    let teConds = `te.status IN ('submitted', 'approved')
+      AND t.week_start_date >= :startDate AND t.week_start_date <= :endDate`;
     const replacements = { startDate, endDate };
 
-    if (employeeId) {
-      whereClauses += ` AND t.user_id = :employeeId`;
-      replacements.employeeId = employeeId;
-    }
     if (projectId) {
-      whereClauses += ` AND te.project_id = :projectId`;
+      teConds += ` AND te.project_id = :projectId`;
       replacements.projectId = projectId;
     }
+
+    // User-level WHERE
+    let userWhere = `u.role != 'admin' AND u.status = 'active'`;
+    if (employeeId) {
+      userWhere += ` AND u.id = :employeeId`;
+      replacements.employeeId = employeeId;
+    }
     if (selectedEmployeeIds && selectedEmployeeIds.length > 0) {
-      whereClauses += ` AND u.employee_id IN (:selectedEmployeeIds)`;
+      userWhere += ` AND u.employee_id IN (:selectedEmployeeIds)`;
       replacements.selectedEmployeeIds = selectedEmployeeIds;
     }
 
+    // LEFT JOIN so ALL active employees appear even with 0 hours
     const baseSql = `
-      FROM timesheet_entries te
-      JOIN timesheets t ON te.timesheet_id = t.id
-      JOIN users u ON t.user_id = u.id
-      WHERE ${whereClauses}`;
+      FROM users u
+      LEFT JOIN timesheets t ON t.user_id = u.id AND t.week_start_date >= :startDate AND t.week_start_date <= :endDate
+      LEFT JOIN timesheet_entries te ON te.timesheet_id = t.id AND ${teConds}
+      WHERE ${userWhere}`;
 
+    // Summary: totals across ALL matching users (not just current page)
     const summaryQuery = `
       SELECT
         COALESCE(SUM(${hoursSql}), 0) AS total_submitted_hours,
         COALESCE(SUM(CASE WHEN te.status = 'approved' THEN (${hoursSql}) ELSE 0 END), 0) AS approved_hours,
-        COALESCE(SUM(CASE WHEN te.billable = true THEN (${hoursSql}) ELSE 0 END), 0) AS billable_hours,
-        COALESCE(SUM(CASE WHEN te.billable = false THEN (${hoursSql}) ELSE 0 END), 0) AS non_billable_hours
+        COALESCE(SUM(CASE WHEN te.status = 'approved' AND te.billable = true THEN (${hoursSql}) ELSE 0 END), 0) AS billable_hours,
+        COALESCE(SUM(CASE WHEN te.status = 'approved' AND te.billable = false THEN (${hoursSql}) ELSE 0 END), 0) AS non_billable_hours
       ${baseSql}`;
 
     const [summaryResult] = await sequelize.query(summaryQuery, {
@@ -625,6 +630,7 @@ class AdminService {
       type: QueryTypes.SELECT,
     });
 
+    // Count distinct users
     const countQuery = `SELECT COUNT(DISTINCT u.id) AS total ${baseSql}`;
     const [countResult] = await sequelize.query(countQuery, {
       replacements,
@@ -640,8 +646,8 @@ class AdminService {
         u.last_name,
         COALESCE(SUM(${hoursSql}), 0) AS total_submitted_hours,
         COALESCE(SUM(CASE WHEN te.status = 'approved' THEN (${hoursSql}) ELSE 0 END), 0) AS approved_hours,
-        COALESCE(SUM(CASE WHEN te.billable = true THEN (${hoursSql}) ELSE 0 END), 0) AS billable_hours,
-        COALESCE(SUM(CASE WHEN te.billable = false THEN (${hoursSql}) ELSE 0 END), 0) AS non_billable_hours
+        COALESCE(SUM(CASE WHEN te.status = 'approved' AND te.billable = true THEN (${hoursSql}) ELSE 0 END), 0) AS billable_hours,
+        COALESCE(SUM(CASE WHEN te.status = 'approved' AND te.billable = false THEN (${hoursSql}) ELSE 0 END), 0) AS non_billable_hours
       ${baseSql}
       GROUP BY u.id, u.employee_id, u.first_name, u.last_name
       ORDER BY u.first_name ASC, u.last_name ASC

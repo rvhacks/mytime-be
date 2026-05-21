@@ -187,7 +187,7 @@ exports.getProjectDetail = catchAsync(async (req, res) => {
       {
         model: ProjectAssignment,
         as: 'assignments',
-        include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'email'] }],
+        include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'email', 'mobile', 'avatar_path'] }],
       },
     ],
   });
