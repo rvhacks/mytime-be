@@ -169,3 +169,31 @@ exports.sendBulkReminders = catchAsync(async (req, res) => {
   const data = await adminService.sendBulkReminders(managerIds);
   res.json({ status: 'success', data, message: 'Reminders sent' });
 });
+
+// ---- REPORTS ----
+exports.getTimesheetReport = catchAsync(async (req, res) => {
+  const { startDate, endDate, employeeId, projectId } = req.query;
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 20;
+  const data = await adminService.getTimesheetReport({ startDate, endDate, employeeId, projectId, page, limit });
+  res.json({ status: 'success', data });
+});
+
+exports.exportTimesheetReport = catchAsync(async (req, res) => {
+  const { startDate, endDate, employeeId, projectId, selectedEmployeeIds } = req.query;
+  const data = await adminService.getTimesheetReport({
+    startDate, endDate, employeeId, projectId,
+    selectedEmployeeIds: selectedEmployeeIds ? selectedEmployeeIds.split(',') : null,
+    page: 1, limit: 1000000,
+  });
+
+  const csvHeader = 'Employee ID,Employee Name,Total Submitted Hours,Approved Hours,Billable Hours,Non-Billable Hours';
+  const csvRows = data.rows.map(r =>
+    `${r.employeeId},"${r.employeeName}",${r.totalSubmittedHours},${r.approvedHours},${r.billableHours},${r.nonBillableHours}`
+  );
+  const csv = [csvHeader, ...csvRows].join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="timesheet-summary.csv"');
+  res.send(csv);
+});

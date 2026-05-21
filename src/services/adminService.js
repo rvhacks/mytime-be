@@ -576,6 +576,105 @@ class AdminService {
       };
     });
   }
+
+  // ---- REPORTS ----
+  async getTimesheetReport({ startDate, endDate, employeeId, projectId, selectedEmployeeIds, page = 1, limit = 20 }) {
+    const { sequelize } = require('../infrastructure/models');
+    const { QueryTypes } = require('sequelize');
+
+    const now = new Date();
+    if (!startDate) startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    if (!endDate) endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+
+    const hoursSql = `COALESCE(te.hours_mon,0) + COALESCE(te.hours_tue,0) + COALESCE(te.hours_wed,0) + COALESCE(te.hours_thu,0) + COALESCE(te.hours_fri,0) + COALESCE(te.hours_sat,0) + COALESCE(te.hours_sun,0)`;
+
+    let whereClauses = `t.week_start_date >= :startDate AND t.week_start_date <= :endDate
+      AND te.status IN ('submitted', 'approved')
+      AND u.role != 'admin'`;
+    const replacements = { startDate, endDate };
+
+    if (employeeId) {
+      whereClauses += ` AND t.user_id = :employeeId`;
+      replacements.employeeId = employeeId;
+    }
+    if (projectId) {
+      whereClauses += ` AND te.project_id = :projectId`;
+      replacements.projectId = projectId;
+    }
+    if (selectedEmployeeIds && selectedEmployeeIds.length > 0) {
+      whereClauses += ` AND u.employee_id IN (:selectedEmployeeIds)`;
+      replacements.selectedEmployeeIds = selectedEmployeeIds;
+    }
+
+    const baseSql = `
+      FROM timesheet_entries te
+      JOIN timesheets t ON te.timesheet_id = t.id
+      JOIN users u ON t.user_id = u.id
+      WHERE ${whereClauses}`;
+
+    const summaryQuery = `
+      SELECT
+        COALESCE(SUM(${hoursSql}), 0) AS total_submitted_hours,
+        COALESCE(SUM(CASE WHEN te.status = 'approved' THEN (${hoursSql}) ELSE 0 END), 0) AS approved_hours,
+        COALESCE(SUM(CASE WHEN te.billable = true THEN (${hoursSql}) ELSE 0 END), 0) AS billable_hours,
+        COALESCE(SUM(CASE WHEN te.billable = false THEN (${hoursSql}) ELSE 0 END), 0) AS non_billable_hours
+      ${baseSql}`;
+
+    const [summaryResult] = await sequelize.query(summaryQuery, {
+      replacements,
+      type: QueryTypes.SELECT,
+    });
+
+    const countQuery = `SELECT COUNT(DISTINCT u.id) AS total ${baseSql}`;
+    const [countResult] = await sequelize.query(countQuery, {
+      replacements,
+      type: QueryTypes.SELECT,
+    });
+    const total = parseInt(countResult.total, 10);
+
+    const offset = (page - 1) * limit;
+    const rowsQuery = `
+      SELECT
+        u.employee_id,
+        u.first_name,
+        u.last_name,
+        COALESCE(SUM(${hoursSql}), 0) AS total_submitted_hours,
+        COALESCE(SUM(CASE WHEN te.status = 'approved' THEN (${hoursSql}) ELSE 0 END), 0) AS approved_hours,
+        COALESCE(SUM(CASE WHEN te.billable = true THEN (${hoursSql}) ELSE 0 END), 0) AS billable_hours,
+        COALESCE(SUM(CASE WHEN te.billable = false THEN (${hoursSql}) ELSE 0 END), 0) AS non_billable_hours
+      ${baseSql}
+      GROUP BY u.id, u.employee_id, u.first_name, u.last_name
+      ORDER BY u.first_name ASC, u.last_name ASC
+      LIMIT :limit OFFSET :offset`;
+
+    const rows = await sequelize.query(rowsQuery, {
+      replacements: { ...replacements, limit, offset },
+      type: QueryTypes.SELECT,
+    });
+
+    return {
+      summary: {
+        totalSubmittedHours: parseFloat(summaryResult.total_submitted_hours),
+        approvedHours: parseFloat(summaryResult.approved_hours),
+        billableHours: parseFloat(summaryResult.billable_hours),
+        nonBillableHours: parseFloat(summaryResult.non_billable_hours),
+      },
+      rows: rows.map(r => ({
+        employeeId: r.employee_id,
+        employeeName: `${r.first_name} ${r.last_name}`,
+        totalSubmittedHours: parseFloat(r.total_submitted_hours),
+        approvedHours: parseFloat(r.approved_hours),
+        billableHours: parseFloat(r.billable_hours),
+        nonBillableHours: parseFloat(r.non_billable_hours),
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
 }
 
 module.exports = new AdminService();

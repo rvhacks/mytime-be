@@ -55,5 +55,8 @@ router.delete('/milestones/:id', adminController.deleteMilestone);
 router.get('/approvals/managers', adminController.getManagersWithPendingApprovals);
 router.get('/approvals/manager/:managerId/entries', adminController.getManagerDirectReportEntries);
 router.post('/approvals/remind', adminController.sendBulkReminders);
+// Reports
+router.get('/reports/timesheet-summary/export', adminController.exportTimesheetReport);
+router.get('/reports/timesheet-summary', adminController.getTimesheetReport);
 
 module.exports = router;
