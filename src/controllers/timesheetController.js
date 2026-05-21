@@ -209,6 +209,28 @@ exports.getProjectDetail = catchAsync(async (req, res) => {
 });
 
 // ===========================
+// REJECTED TIMESHEETS (for employee dashboard alert)
+// ===========================
+
+exports.getRejectedEntries = catchAsync(async (req, res) => {
+  const { TimesheetEntry, Timesheet, Project, User } = require('../infrastructure/models');
+  const entries = await TimesheetEntry.findAll({
+    where: { status: 'rejected' },
+    include: [
+      {
+        model: Timesheet, as: 'timesheet',
+        where: { user_id: req.user.id },
+        attributes: ['id', 'week_start_date', 'week_end_date'],
+      },
+      { model: Project, as: 'project', attributes: ['id', 'name', 'project_code'] },
+      { model: User, as: 'reviewer', attributes: ['id', 'first_name', 'last_name'] },
+    ],
+    order: [['reviewed_at', 'DESC']],
+  });
+  res.json({ status: 'success', data: entries });
+});
+
+// ===========================
 // REPORTS
 // ===========================
 

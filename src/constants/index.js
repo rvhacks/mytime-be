@@ -25,6 +25,7 @@ module.exports = {
   ENTRY_STATUS: {
     DRAFT: 'draft',
     SUBMITTED: 'submitted',
+    RESUBMITTED: 'resubmitted',
     RECALLED: 'recalled',
     APPROVED: 'approved',
     REJECTED: 'rejected',

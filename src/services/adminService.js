@@ -337,7 +337,7 @@ class AdminService {
         raw: true,
       });
       const tsIds = userTimesheets.map(t => t.id);
-      const nonDraftStatuses = ['submitted', 'approved', 'rejected'];
+      const nonDraftStatuses = ['submitted', 'resubmitted', 'approved', 'rejected'];
 
       const totalResult = await TimesheetEntry.findAll({
         where: { timesheet_id: { [Op.in]: tsIds }, status: { [Op.in]: nonDraftStatuses } },
@@ -383,7 +383,7 @@ class AdminService {
     // --- Admin company-wide stats ---
     const totalEmployees = await User.count({ where: { status: 'active' } });
     const activeProjects = await Project.count({ where: { status: 'active' } });
-    const nonDraftStatuses = ['submitted', 'approved', 'rejected'];
+    const nonDraftStatuses = ['submitted', 'resubmitted', 'approved', 'rejected'];
 
     const totalResult = await TimesheetEntry.findAll({
       where: { status: { [Op.in]: nonDraftStatuses } },
@@ -589,7 +589,7 @@ class AdminService {
     const hoursSql = `COALESCE(te.hours_mon,0) + COALESCE(te.hours_tue,0) + COALESCE(te.hours_wed,0) + COALESCE(te.hours_thu,0) + COALESCE(te.hours_fri,0) + COALESCE(te.hours_sat,0) + COALESCE(te.hours_sun,0)`;
 
     // Build optional JOIN conditions for timesheet_entries
-    let teConds = `te.status IN ('submitted', 'approved')
+    let teConds = `te.status IN ('submitted', 'resubmitted', 'approved')
       AND t.week_start_date >= :startDate AND t.week_start_date <= :endDate`;
     const replacements = { startDate, endDate };
 

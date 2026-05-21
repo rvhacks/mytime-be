@@ -33,6 +33,7 @@ class UserService {
     if (json.reporting_manager_id) {
       const rm = await User.findByPk(json.reporting_manager_id, {
         attributes: ['id', 'first_name', 'last_name', 'email', 'mobile', 'avatar_path'],
+        include: [{ model: Designation, as: 'designation', attributes: ['name'] }],
       });
       if (rm) {
         const rmJson = rm.toJSON();
@@ -49,6 +50,7 @@ class UserService {
           email: rmJson.email,
           mobile: rmJson.mobile || '',
           avatarUrl: rmAvatar,
+          designation: rmJson.designation?.name || '',
         };
       }
     }
@@ -106,7 +108,7 @@ class UserService {
 
     const hoursSql = `COALESCE(te.hours_mon,0) + COALESCE(te.hours_tue,0) + COALESCE(te.hours_wed,0) + COALESCE(te.hours_thu,0) + COALESCE(te.hours_fri,0) + COALESCE(te.hours_sat,0) + COALESCE(te.hours_sun,0)`;
 
-    let whereClauses = `t.user_id = :userId AND te.status IN ('submitted', 'approved')`;
+    let whereClauses = `t.user_id = :userId AND te.status IN ('submitted', 'resubmitted', 'approved')`;
     const replacements = { userId };
 
     if (startDate) {
@@ -196,7 +198,18 @@ class UserService {
     });
     directReports.forEach(u => teammateIds.add(u.id));
 
-    if (teammateIds.size === 0) return { members: [] };
+    if (teammateIds.size === 0) {
+      // Still return projects even if no team members
+      let projects = [];
+      if (myProjectIds.length > 0) {
+        projects = await Project.findAll({
+          where: { id: { [Op.in]: myProjectIds } },
+          attributes: ['id', 'name', 'project_code'],
+          order: [['name', 'ASC']],
+        });
+      }
+      return { members: [], projects: projects.map(p => ({ id: p.id, name: p.name, code: p.project_code })) };
+    }
 
     const members = await User.findAll({
       where: { id: { [Op.in]: [...teammateIds] }, status: 'active' },
@@ -204,6 +217,25 @@ class UserService {
       include: [{ model: Designation, as: 'designation', attributes: ['name'] }],
       order: [['first_name', 'ASC'], ['last_name', 'ASC']],
     });
+
+    // Gather all project IDs (user + direct reports if RM)
+    const allProjectIds = new Set(myProjectIds);
+    if (directReports.length > 0) {
+      const reportAssignments = await ProjectAssignment.findAll({
+        where: { user_id: { [Op.in]: directReports.map(u => u.id) } },
+        attributes: ['project_id'],
+      });
+      reportAssignments.forEach(a => allProjectIds.add(a.project_id));
+    }
+
+    let projects = [];
+    if (allProjectIds.size > 0) {
+      projects = await Project.findAll({
+        where: { id: { [Op.in]: [...allProjectIds] } },
+        attributes: ['id', 'name', 'project_code'],
+        order: [['name', 'ASC']],
+      });
+    }
 
     return {
       members: members.map(m => {
@@ -226,6 +258,7 @@ class UserService {
           isDirectReport: directReports.some(d => d.id === j.id),
         };
       }),
+      projects: projects.map(p => ({ id: p.id, name: p.name, code: p.project_code })),
     };
   }
 }

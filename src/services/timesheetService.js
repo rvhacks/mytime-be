@@ -152,7 +152,7 @@ class TimesheetService {
             comments: entry.review_comments || '',
           });
           await entry.update({
-            status: ENTRY_STATUS.SUBMITTED,
+            status: ENTRY_STATUS.RESUBMITTED,
             submitted_at: new Date(),
             resubmission_count: (entry.resubmission_count || 0) + 1,
             rejection_history: history,
@@ -195,7 +195,7 @@ class TimesheetService {
         if (entry.timesheet.user_id !== userId) {
           throw new AppError('Unauthorized', 403);
         }
-        if (entry.status !== ENTRY_STATUS.SUBMITTED) {
+        if (![ENTRY_STATUS.SUBMITTED, ENTRY_STATUS.RESUBMITTED].includes(entry.status)) {
           throw new AppError(`Entry ${entry.id} can only be recalled when submitted (status: ${entry.status})`, 400);
         }
       }
@@ -232,7 +232,7 @@ class TimesheetService {
 
     // Find all submitted entries from direct reports
     return TimesheetEntry.findAndCountAll({
-      where: { status: ENTRY_STATUS.SUBMITTED },
+      where: { status: { [Op.in]: [ENTRY_STATUS.SUBMITTED, ENTRY_STATUS.RESUBMITTED] } },
       include: [
         {
           model: Timesheet,
@@ -255,7 +255,7 @@ class TimesheetService {
   async approveEntries(reviewerId, entryIds, comments) {
     return sequelize.transaction(async (t) => {
       const entries = await TimesheetEntry.findAll({
-        where: { id: { [Op.in]: entryIds }, status: ENTRY_STATUS.SUBMITTED },
+        where: { id: { [Op.in]: entryIds }, status: { [Op.in]: [ENTRY_STATUS.SUBMITTED, ENTRY_STATUS.RESUBMITTED] } },
         include: [{ model: Timesheet, as: 'timesheet', include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'reporting_manager_id'] }] }],
         transaction: t,
       });
@@ -301,7 +301,7 @@ class TimesheetService {
   async rejectEntries(reviewerId, entryIds, comments) {
     return sequelize.transaction(async (t) => {
       const entries = await TimesheetEntry.findAll({
-        where: { id: { [Op.in]: entryIds }, status: ENTRY_STATUS.SUBMITTED },
+        where: { id: { [Op.in]: entryIds }, status: { [Op.in]: [ENTRY_STATUS.SUBMITTED, ENTRY_STATUS.RESUBMITTED] } },
         include: [{ model: Timesheet, as: 'timesheet', include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'reporting_manager_id'] }] }],
         transaction: t,
       });
