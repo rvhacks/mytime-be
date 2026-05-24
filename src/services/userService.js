@@ -173,7 +173,7 @@ class UserService {
   /**
    * My Team: employees who share projects with the user + direct reports (if RM).
    */
-  async getMyTeam(userId) {
+  async getMyTeam(userId, projectId) {
     const { Op } = require('sequelize');
 
     const myAssignments = await ProjectAssignment.findAll({
@@ -199,7 +199,6 @@ class UserService {
     directReports.forEach(u => teammateIds.add(u.id));
 
     if (teammateIds.size === 0) {
-      // Still return projects even if no team members
       let projects = [];
       if (myProjectIds.length > 0) {
         projects = await Project.findAll({
@@ -217,6 +216,17 @@ class UserService {
       include: [{ model: Designation, as: 'designation', attributes: ['name'] }],
       order: [['first_name', 'ASC'], ['last_name', 'ASC']],
     });
+
+    // If projectId filter, only keep members assigned to that project
+    let filteredMembers = members;
+    if (projectId) {
+      const projectAssignments = await ProjectAssignment.findAll({
+        where: { project_id: projectId },
+        attributes: ['user_id'],
+      });
+      const assignedUserIds = new Set(projectAssignments.map(a => a.user_id));
+      filteredMembers = members.filter(m => assignedUserIds.has(m.id));
+    }
 
     // Gather all project IDs (user + direct reports if RM)
     const allProjectIds = new Set(myProjectIds);
@@ -238,7 +248,7 @@ class UserService {
     }
 
     return {
-      members: members.map(m => {
+      members: filteredMembers.map(m => {
         const j = m.toJSON();
         let avatarUrl = null;
         if (j.avatar_path) {

@@ -25,10 +25,24 @@ class TimesheetService {
   // ===========================
 
   async getTimesheetByWeek(userId, weekStartDate) {
+    // Exact match first
     let ts = await Timesheet.findOne({
       where: { user_id: userId, week_start_date: weekStartDate },
       include: TIMESHEET_INCLUDES,
     });
+    // Fallback: ±1 day range to handle timezone/date-format differences
+    if (!ts) {
+      const target = new Date(weekStartDate + 'T00:00:00');
+      const dayBefore = new Date(target); dayBefore.setDate(dayBefore.getDate() - 1);
+      const dayAfter = new Date(target); dayAfter.setDate(dayAfter.getDate() + 1);
+      ts = await Timesheet.findOne({
+        where: {
+          user_id: userId,
+          week_start_date: { [Op.between]: [dayBefore.toISOString().slice(0, 10), dayAfter.toISOString().slice(0, 10)] },
+        },
+        include: TIMESHEET_INCLUDES,
+      });
+    }
     return ts;
   }
 

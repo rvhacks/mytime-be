@@ -231,6 +231,25 @@ exports.getRejectedEntries = catchAsync(async (req, res) => {
 });
 
 // ===========================
+// REJECTION HISTORY
+// ===========================
+
+exports.getEntryRejectionHistory = catchAsync(async (req, res) => {
+  const { entryId } = req.params;
+  const { RejectionHistory, User, Project, Milestone } = require('../infrastructure/models');
+  const history = await RejectionHistory.findAll({
+    where: { entry_id: entryId },
+    include: [
+      { model: User, as: 'rejectedByUser', attributes: ['id', 'first_name', 'last_name'] },
+      { model: Project, as: 'project', attributes: ['id', 'name'] },
+      { model: Milestone, as: 'milestone', attributes: ['id', 'name'] },
+    ],
+    order: [['rejected_at', 'DESC']],
+  });
+  res.json({ status: 'success', data: history });
+});
+
+// ===========================
 // REPORTS
 // ===========================
 

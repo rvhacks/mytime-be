@@ -751,7 +751,7 @@ class AdminService {
         te.reviewed_at,
         te.review_comments
       ${baseSql}
-      ORDER BY te.submitted_at DESC NULLS LAST, t.week_start_date DESC
+      ORDER BY employee_name ASC, t.week_start_date DESC
       LIMIT :limit OFFSET :offset`;
 
     const rows = await sequelize.query(rowsQuery, {

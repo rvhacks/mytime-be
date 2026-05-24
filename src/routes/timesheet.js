@@ -14,6 +14,7 @@ router.post('/submit', tc.submitEntries);           // submit specific entry IDs
 router.post('/recall', tc.recallEntries);           // recall specific entry IDs
 router.get('/detail/:id', tc.getTimesheetDetail);
 router.get('/rejected-entries', tc.getRejectedEntries);
+router.get('/rejection-history/:entryId', tc.getEntryRejectionHistory);
 
 // Milestones by role
 router.get('/milestones/role/:role', tc.getMilestonesByRole);

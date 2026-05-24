@@ -43,6 +43,7 @@ exports.getMyReport = catchAsync(async (req, res) => {
 });
 
 exports.getMyTeam = catchAsync(async (req, res) => {
-  const data = await userService.getMyTeam(req.user.id);
+  const { projectId } = req.query;
+  const data = await userService.getMyTeam(req.user.id, projectId);
   res.json({ status: 'success', data });
 });
