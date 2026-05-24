@@ -108,7 +108,7 @@ class UserService {
 
     const hoursSql = `COALESCE(te.hours_mon,0) + COALESCE(te.hours_tue,0) + COALESCE(te.hours_wed,0) + COALESCE(te.hours_thu,0) + COALESCE(te.hours_fri,0) + COALESCE(te.hours_sat,0) + COALESCE(te.hours_sun,0)`;
 
-    let whereClauses = `t.user_id = :userId AND te.status IN ('submitted', 'resubmitted', 'approved')`;
+    let whereClauses = `t.user_id = :userId AND te.status IN ('submitted', 'resubmitted', 'approved', 'rejected')`;
     const replacements = { userId };
 
     if (startDate) {

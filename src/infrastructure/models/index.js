@@ -24,6 +24,7 @@ const Timesheet = require('./Timesheet')(sequelize);
 const TimesheetEntry = require('./TimesheetEntry')(sequelize);
 const Otp = require('./Otp')(sequelize);
 const Notification = require('./Notification')(sequelize);
+const RejectionHistory = require('./RejectionHistory')(sequelize);
 
 // ---- ASSOCIATIONS ----
 
@@ -71,6 +72,15 @@ Otp.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 User.hasMany(Notification, { foreignKey: 'user_id', as: 'notifications' });
 Notification.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// RejectionHistory associations
+TimesheetEntry.hasMany(RejectionHistory, { foreignKey: 'entry_id', as: 'rejections' });
+RejectionHistory.belongsTo(TimesheetEntry, { foreignKey: 'entry_id', as: 'entry' });
+User.hasMany(RejectionHistory, { foreignKey: 'employee_id', as: 'rejectionHistory' });
+RejectionHistory.belongsTo(User, { foreignKey: 'employee_id', as: 'employee' });
+RejectionHistory.belongsTo(User, { foreignKey: 'rejected_by', as: 'rejectedByUser' });
+RejectionHistory.belongsTo(Project, { foreignKey: 'project_id', as: 'project' });
+RejectionHistory.belongsTo(Milestone, { foreignKey: 'milestone_id', as: 'milestone' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -83,4 +93,5 @@ module.exports = {
   TimesheetEntry,
   Otp,
   Notification,
+  RejectionHistory,
 };

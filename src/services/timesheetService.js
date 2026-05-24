@@ -1,4 +1,4 @@
-const { Timesheet, TimesheetEntry, User, Project, Milestone, sequelize } = require('../infrastructure/models');
+const { Timesheet, TimesheetEntry, User, Project, Milestone, RejectionHistory, sequelize } = require('../infrastructure/models');
 const { Op } = require('sequelize');
 const notificationService = require('./notificationService');
 const AppError = require('../utils/AppError');
@@ -317,6 +317,31 @@ class TimesheetService {
           }
         }
       }
+
+      // Insert rejection history records
+      const rejectionRecords = entries.map(entry => ({
+        entry_id: entry.id,
+        timesheet_id: entry.timesheet_id,
+        employee_id: entry.timesheet.user_id,
+        project_id: entry.project_id,
+        milestone_id: entry.milestone_id,
+        task_description: entry.task_description,
+        billable: entry.billable,
+        hours_mon: entry.hours_mon,
+        hours_tue: entry.hours_tue,
+        hours_wed: entry.hours_wed,
+        hours_thu: entry.hours_thu,
+        hours_fri: entry.hours_fri,
+        hours_sat: entry.hours_sat,
+        hours_sun: entry.hours_sun,
+        total_hours: parseFloat(entry.hours_mon || 0) + parseFloat(entry.hours_tue || 0) + parseFloat(entry.hours_wed || 0) + parseFloat(entry.hours_thu || 0) + parseFloat(entry.hours_fri || 0) + parseFloat(entry.hours_sat || 0) + parseFloat(entry.hours_sun || 0),
+        rejected_by: reviewerId,
+        rejected_at: new Date(),
+        rejection_reason: comments || 'Rejected',
+        week_start_date: entry.timesheet.week_start_date,
+        week_end_date: entry.timesheet.week_end_date,
+      }));
+      await RejectionHistory.bulkCreate(rejectionRecords, { transaction: t });
 
       await TimesheetEntry.update(
         {

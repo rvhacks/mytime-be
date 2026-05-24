@@ -27,6 +27,41 @@ async function startServer() {
     await safeAddColumn('timesheet_entries', 'rejection_history', 'JSONB', "DEFAULT '[]'::jsonb");
     await safeAddColumn('users', 'must_change_password', 'BOOLEAN', 'DEFAULT false');
 
+    // Create rejection_history table if it doesn't exist
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS rejection_history (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        entry_id UUID NOT NULL REFERENCES timesheet_entries(id) ON DELETE CASCADE,
+        timesheet_id UUID NOT NULL REFERENCES timesheets(id) ON DELETE CASCADE,
+        employee_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        milestone_id UUID REFERENCES milestones(id),
+        task_description TEXT,
+        billable BOOLEAN DEFAULT true,
+        hours_mon DECIMAL(4,2) DEFAULT 0,
+        hours_tue DECIMAL(4,2) DEFAULT 0,
+        hours_wed DECIMAL(4,2) DEFAULT 0,
+        hours_thu DECIMAL(4,2) DEFAULT 0,
+        hours_fri DECIMAL(4,2) DEFAULT 0,
+        hours_sat DECIMAL(4,2) DEFAULT 0,
+        hours_sun DECIMAL(4,2) DEFAULT 0,
+        total_hours DECIMAL(6,2) DEFAULT 0,
+        rejected_by UUID NOT NULL REFERENCES users(id),
+        rejected_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        rejection_reason TEXT,
+        week_start_date DATE NOT NULL,
+        week_end_date DATE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `).catch(() => { /* table already exists */ });
+
+    // Create indexes on rejection_history
+    await sequelize.query(`CREATE INDEX IF NOT EXISTS idx_rejection_history_entry_id ON rejection_history(entry_id)`).catch(() => {});
+    await sequelize.query(`CREATE INDEX IF NOT EXISTS idx_rejection_history_employee_id ON rejection_history(employee_id)`).catch(() => {});
+    await sequelize.query(`CREATE INDEX IF NOT EXISTS idx_rejection_history_project_id ON rejection_history(project_id)`).catch(() => {});
+    await sequelize.query(`CREATE INDEX IF NOT EXISTS idx_rejection_history_rejected_at ON rejection_history(rejected_at)`).catch(() => {});
+
     // Widen color column if it's still VARCHAR(7)
     try {
       await sequelize.query(`ALTER TABLE "projects" ALTER COLUMN "color" TYPE VARCHAR(20)`);

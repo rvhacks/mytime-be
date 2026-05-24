@@ -172,17 +172,17 @@ exports.sendBulkReminders = catchAsync(async (req, res) => {
 
 // ---- REPORTS ----
 exports.getTimesheetReport = catchAsync(async (req, res) => {
-  const { startDate, endDate, employeeId, projectId } = req.query;
+  const { startDate, endDate, employeeId, projectId, maxApprovedHours } = req.query;
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 20;
-  const data = await adminService.getTimesheetReport({ startDate, endDate, employeeId, projectId, page, limit });
+  const data = await adminService.getTimesheetReport({ startDate, endDate, employeeId, projectId, maxApprovedHours, page, limit });
   res.json({ status: 'success', data });
 });
 
 exports.exportTimesheetReport = catchAsync(async (req, res) => {
-  const { startDate, endDate, employeeId, projectId, selectedEmployeeIds } = req.query;
+  const { startDate, endDate, employeeId, projectId, selectedEmployeeIds, maxApprovedHours } = req.query;
   const data = await adminService.getTimesheetReport({
-    startDate, endDate, employeeId, projectId,
+    startDate, endDate, employeeId, projectId, maxApprovedHours,
     selectedEmployeeIds: selectedEmployeeIds ? selectedEmployeeIds.split(',') : null,
     page: 1, limit: 1000000,
   });
@@ -195,5 +195,28 @@ exports.exportTimesheetReport = catchAsync(async (req, res) => {
 
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="timesheet-summary.csv"');
+  res.send(csv);
+});
+
+exports.getPastSubmittedTimesheets = catchAsync(async (req, res) => {
+  const { startDate, endDate, employeeId, projectId } = req.query;
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 20;
+  const data = await adminService.getPastSubmittedTimesheets({ startDate, endDate, employeeId, projectId, page, limit });
+  res.json({ status: 'success', data });
+});
+
+exports.exportPastSubmittedTimesheets = catchAsync(async (req, res) => {
+  const { startDate, endDate, employeeId, projectId } = req.query;
+  const data = await adminService.getPastSubmittedTimesheets({ startDate, endDate, employeeId, projectId, page: 1, limit: 1000000 });
+
+  const csvHeader = 'Employee ID,Employee Name,Project,Week,Status,Billable,Task Description,Total Hours,Submitted At,Review Comments';
+  const csvRows = data.rows.map(r =>
+    `${r.employeeId},"${r.employeeName}","${r.projectName}",${r.weekStartDate} - ${r.weekEndDate},${r.status},${r.billable ? 'Yes' : 'No'},"${(r.taskDescription || '').replace(/"/g, '""')}",${r.totalHours},${r.submittedAt || ''},"${(r.reviewComments || '').replace(/"/g, '""')}"`
+  );
+  const csv = [csvHeader, ...csvRows].join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="past-timesheets.csv"');
   res.send(csv);
 });

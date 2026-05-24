@@ -58,5 +58,7 @@ router.post('/approvals/remind', adminController.sendBulkReminders);
 // Reports
 router.get('/reports/timesheet-summary/export', adminController.exportTimesheetReport);
 router.get('/reports/timesheet-summary', adminController.getTimesheetReport);
+router.get('/reports/past-timesheets/export', adminController.exportPastSubmittedTimesheets);
+router.get('/reports/past-timesheets', adminController.getPastSubmittedTimesheets);
 
 module.exports = router;

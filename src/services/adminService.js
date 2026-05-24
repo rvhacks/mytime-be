@@ -578,7 +578,7 @@ class AdminService {
   }
 
   // ---- REPORTS ----
-  async getTimesheetReport({ startDate, endDate, employeeId, projectId, selectedEmployeeIds, page = 1, limit = 20 }) {
+  async getTimesheetReport({ startDate, endDate, employeeId, projectId, selectedEmployeeIds, maxApprovedHours, page = 1, limit = 20 }) {
     const { sequelize } = require('../infrastructure/models');
     const { QueryTypes } = require('sequelize');
 
@@ -589,7 +589,7 @@ class AdminService {
     const hoursSql = `COALESCE(te.hours_mon,0) + COALESCE(te.hours_tue,0) + COALESCE(te.hours_wed,0) + COALESCE(te.hours_thu,0) + COALESCE(te.hours_fri,0) + COALESCE(te.hours_sat,0) + COALESCE(te.hours_sun,0)`;
 
     // Build optional JOIN conditions for timesheet_entries
-    let teConds = `te.status IN ('submitted', 'resubmitted', 'approved')
+    let teConds = `te.status IN ('submitted', 'resubmitted', 'approved', 'rejected')
       AND t.week_start_date >= :startDate AND t.week_start_date <= :endDate`;
     const replacements = { startDate, endDate };
 
@@ -630,8 +630,17 @@ class AdminService {
       type: QueryTypes.SELECT,
     });
 
-    // Count distinct users
-    const countQuery = `SELECT COUNT(DISTINCT u.id) AS total ${baseSql}`;
+    // Optional HAVING clause for approved hours filter
+    let havingClause = '';
+    if (maxApprovedHours !== undefined && maxApprovedHours !== null && maxApprovedHours !== '') {
+      havingClause = ` HAVING COALESCE(SUM(CASE WHEN te.status = 'approved' THEN (${hoursSql}) ELSE 0 END), 0) <= :maxApprovedHours`;
+      replacements.maxApprovedHours = parseFloat(maxApprovedHours);
+    }
+
+    // Count distinct users (with HAVING if applicable)
+    const countQuery = havingClause
+      ? `SELECT COUNT(*) AS total FROM (SELECT u.id ${baseSql} GROUP BY u.id${havingClause}) sub`
+      : `SELECT COUNT(DISTINCT u.id) AS total ${baseSql}`;
     const [countResult] = await sequelize.query(countQuery, {
       replacements,
       type: QueryTypes.SELECT,
@@ -650,6 +659,7 @@ class AdminService {
         COALESCE(SUM(CASE WHEN te.status = 'approved' AND te.billable = false THEN (${hoursSql}) ELSE 0 END), 0) AS non_billable_hours
       ${baseSql}
       GROUP BY u.id, u.employee_id, u.first_name, u.last_name
+      ${havingClause}
       ORDER BY u.first_name ASC, u.last_name ASC
       LIMIT :limit OFFSET :offset`;
 
@@ -672,6 +682,99 @@ class AdminService {
         approvedHours: parseFloat(r.approved_hours),
         billableHours: parseFloat(r.billable_hours),
         nonBillableHours: parseFloat(r.non_billable_hours),
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // ---- Past Submitted Timesheets (all employees) ----
+  async getPastSubmittedTimesheets({ startDate, endDate, employeeId, projectId, page = 1, limit = 20 }) {
+    const { sequelize } = require('../infrastructure/models');
+    const { QueryTypes } = require('sequelize');
+
+    const hoursSql = `COALESCE(te.hours_mon,0) + COALESCE(te.hours_tue,0) + COALESCE(te.hours_wed,0) + COALESCE(te.hours_thu,0) + COALESCE(te.hours_fri,0) + COALESCE(te.hours_sat,0) + COALESCE(te.hours_sun,0)`;
+
+    let whereClauses = `te.status IN ('submitted', 'resubmitted', 'approved', 'rejected') AND u.role != 'admin'`;
+    const replacements = {};
+
+    if (startDate) {
+      whereClauses += ` AND t.week_start_date >= :startDate`;
+      replacements.startDate = startDate;
+    }
+    if (endDate) {
+      whereClauses += ` AND t.week_start_date <= :endDate`;
+      replacements.endDate = endDate;
+    }
+    if (employeeId) {
+      whereClauses += ` AND u.id = :employeeId`;
+      replacements.employeeId = employeeId;
+    }
+    if (projectId) {
+      whereClauses += ` AND te.project_id = :projectId`;
+      replacements.projectId = projectId;
+    }
+
+    const baseSql = `
+      FROM timesheet_entries te
+      JOIN timesheets t ON t.id = te.timesheet_id
+      JOIN users u ON u.id = t.user_id
+      JOIN projects p ON p.id = te.project_id
+      WHERE ${whereClauses}`;
+
+    // Count
+    const [countResult] = await sequelize.query(
+      `SELECT COUNT(*) AS total ${baseSql}`,
+      { replacements, type: QueryTypes.SELECT }
+    );
+    const total = parseInt(countResult.total, 10);
+
+    const offset = (page - 1) * limit;
+    const rowsQuery = `
+      SELECT
+        te.id,
+        u.employee_id,
+        CONCAT(u.first_name, ' ', u.last_name) AS employee_name,
+        p.name AS project_name,
+        p.project_code,
+        t.week_start_date,
+        t.week_end_date,
+        te.status,
+        te.billable,
+        te.task_description,
+        (${hoursSql}) AS total_hours,
+        te.submitted_at,
+        te.reviewed_at,
+        te.review_comments
+      ${baseSql}
+      ORDER BY te.submitted_at DESC NULLS LAST, t.week_start_date DESC
+      LIMIT :limit OFFSET :offset`;
+
+    const rows = await sequelize.query(rowsQuery, {
+      replacements: { ...replacements, limit, offset },
+      type: QueryTypes.SELECT,
+    });
+
+    return {
+      rows: rows.map(r => ({
+        id: r.id,
+        employeeId: r.employee_id,
+        employeeName: r.employee_name,
+        projectName: r.project_name,
+        projectCode: r.project_code,
+        weekStartDate: r.week_start_date,
+        weekEndDate: r.week_end_date,
+        status: r.status,
+        billable: r.billable,
+        taskDescription: r.task_description,
+        totalHours: parseFloat(r.total_hours),
+        submittedAt: r.submitted_at,
+        reviewedAt: r.reviewed_at,
+        reviewComments: r.review_comments,
       })),
       pagination: {
         page,
