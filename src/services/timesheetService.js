@@ -88,7 +88,7 @@ class TimesheetService {
       });
 
       const lockedEntryIds = existingEntries
-        .filter((e) => [ENTRY_STATUS.SUBMITTED, ENTRY_STATUS.APPROVED].includes(e.status))
+        .filter((e) => [ENTRY_STATUS.SUBMITTED, ENTRY_STATUS.APPROVED, ENTRY_STATUS.REJECTED, ENTRY_STATUS.RESUBMITTED].includes(e.status))
         .map((e) => e.id);
 
       // Delete only editable (draft/recalled/rejected) entries — locked ones stay

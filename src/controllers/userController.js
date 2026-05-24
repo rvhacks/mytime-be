@@ -7,6 +7,10 @@ exports.getProfile = catchAsync(async (req, res) => {
 });
 
 exports.updateProfile = catchAsync(async (req, res) => {
+  // Only admin can edit personal info (firstName, lastName, mobile, dob, designation)
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ status: 'fail', message: 'Only admin can edit profile personal information' });
+  }
   const data = await userService.updateProfile(req.user.id, req.body);
   res.json({ status: 'success', data });
 });

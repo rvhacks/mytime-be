@@ -141,24 +141,47 @@ exports.getEmployeeTimesheets = catchAsync(async (req, res) => {
 // ===========================
 
 exports.getMyAssignedProjects = catchAsync(async (req, res) => {
-  const { ProjectAssignment, Project } = require('../infrastructure/models');
+  const { ProjectAssignment, Project, User } = require('../infrastructure/models');
+  const { Op } = require('sequelize');
 
+  // Get user's own assignments
   const assignments = await ProjectAssignment.findAll({
     where: { user_id: req.user.id },
     include: [{ model: Project, as: 'project' }],
     raw: false,
   });
 
-  const projects = assignments
-    .filter((a) => a.project)
-    .map((a) => {
+  // If user is RM, also include direct reports' project assignments
+  const directReports = await User.findAll({
+    where: { reporting_manager_id: req.user.id, status: 'active' },
+    attributes: ['id'],
+  });
+
+  let reportAssignments = [];
+  if (directReports.length > 0) {
+    reportAssignments = await ProjectAssignment.findAll({
+      where: { user_id: { [Op.in]: directReports.map(u => u.id) } },
+      include: [{ model: Project, as: 'project' }],
+      raw: false,
+    });
+  }
+
+  // Merge and deduplicate by project ID
+  const projectMap = new Map();
+  const addProject = (a) => {
+    if (a.project && !projectMap.has(a.project.id)) {
       const p = a.project.toJSON();
-      return {
+      projectMap.set(p.id, {
         ...p,
         assignment_role: a.role,
         assignment_id: a.id,
-      };
-    });
+      });
+    }
+  };
+  assignments.forEach(addProject);
+  reportAssignments.forEach(addProject);
+
+  const projects = [...projectMap.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
   res.json({ status: 'success', data: projects });
 });

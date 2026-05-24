@@ -10,7 +10,7 @@ const PROJ_PHOENIX = uuidv4(), PROJ_ATLAS = uuidv4(), PROJ_NEXUS = uuidv4(), PRO
 
 module.exports = {
   async up(queryInterface) {
-    const pw = await bcrypt.hash('admin123', 12);
+    const pw = await bcrypt.hash('Password@123', 12);
     const empPw = await bcrypt.hash('ALEX123401015', 12); // Example auto pw
 
     // Designations
