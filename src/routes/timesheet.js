@@ -12,6 +12,7 @@ router.get('/assigned-projects', tc.getMyAssignedProjects);
 router.post('/save', tc.saveEntries);             // save draft rows
 router.post('/submit', tc.submitEntries);           // submit specific entry IDs
 router.post('/recall', tc.recallEntries);           // recall specific entry IDs
+router.delete('/entry/:entryId', tc.deleteEntry);   // delete a draft entry
 router.get('/detail/:id', tc.getTimesheetDetail);
 router.get('/rejected-entries', tc.getRejectedEntries);
 router.get('/rejection-history/:entryId', tc.getEntryRejectionHistory);

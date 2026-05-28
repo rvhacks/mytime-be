@@ -28,6 +28,29 @@ exports.saveEntries = catchAsync(async (req, res) => {
 });
 
 // ===========================
+// EMPLOYEE: Delete a draft entry
+// ===========================
+
+exports.deleteEntry = catchAsync(async (req, res) => {
+  const { entryId } = req.params;
+  const { TimesheetEntry, Timesheet } = require('../infrastructure/models');
+  const AppError = require('../utils/AppError');
+
+  const entry = await TimesheetEntry.findByPk(entryId, {
+    include: [{ model: Timesheet, as: 'timesheet' }],
+  });
+
+  if (!entry) throw new AppError('Entry not found', 404);
+  if (entry.timesheet.user_id !== req.user.id) throw new AppError('Not authorized', 403);
+  if (!['draft', 'recalled'].includes(entry.status)) {
+    throw new AppError('Only draft or recalled entries can be deleted', 400);
+  }
+
+  await entry.destroy();
+  res.json({ status: 'success', message: 'Entry deleted' });
+});
+
+// ===========================
 // EMPLOYEE: Submit entries
 // ===========================
 
