@@ -11,7 +11,11 @@ class AssignmentRepository {
         { model: User, as: 'user', attributes: { exclude: ['password'] } },
         { model: Project, as: 'project' },
       ],
-      order: [['created_at', 'DESC']],
+      order: [
+        [{ model: User, as: 'user' }, 'first_name', 'ASC'],
+        [{ model: User, as: 'user' }, 'last_name', 'ASC'],
+        ['created_at', 'DESC'],
+      ],
       ...rest,
     });
   }

@@ -55,21 +55,40 @@ exports.deleteEntry = catchAsync(async (req, res) => {
 // ===========================
 
 exports.viewEmployeeWeekTimesheet = catchAsync(async (req, res) => {
-  const { employeeId } = req.params;
+  const { employeeId } = req.params; // This is now the employee_id string like CT26-0001
   const { weekStartDate } = req.query;
   const { User } = require('../infrastructure/models');
   const AppError = require('../utils/AppError');
 
+  // Look up user by employee_id string (e.g. CT26-0001)
+  const employee = await User.findOne({
+    where: { employee_id: employeeId, status: 'active' },
+    attributes: ['id', 'employee_id', 'first_name', 'last_name', 'email'],
+  });
+  if (!employee) throw new AppError('Employee not found', 404);
+
   // Admin can view any employee; RM can only view direct reports
   if (req.user.role !== 'admin') {
-    const directReport = await User.findOne({
-      where: { id: employeeId, reporting_manager_id: req.user.id, status: 'active' },
-    });
-    if (!directReport) throw new AppError('You can only view timesheets of your direct reports', 403);
+    if (employee.reporting_manager_id !== req.user.id) {
+      const directReport = await User.findOne({
+        where: { id: employee.id, reporting_manager_id: req.user.id, status: 'active' },
+      });
+      if (!directReport) throw new AppError('You can only view timesheets of your direct reports', 403);
+    }
   }
 
-  const data = await timesheetService.getTimesheetByWeek(employeeId, weekStartDate);
-  res.json({ status: 'success', data });
+  const data = await timesheetService.getTimesheetByWeek(employee.id, weekStartDate);
+  res.json({
+    status: 'success',
+    data,
+    employee: {
+      id: employee.id,
+      employeeId: employee.employee_id,
+      firstName: employee.first_name,
+      lastName: employee.last_name,
+      fullName: `${employee.first_name} ${employee.last_name}`.trim(),
+    },
+  });
 });
 
 // ===========================
@@ -188,6 +207,7 @@ exports.getEmployeeTimesheets = catchAsync(async (req, res) => {
 exports.getMyAssignedProjects = catchAsync(async (req, res) => {
   const { ProjectAssignment, Project, User } = require('../infrastructure/models');
   const { Op } = require('sequelize');
+  const scope = req.query.scope; // 'own' = only user's own projects
 
   // Get user's own assignments
   const assignments = await ProjectAssignment.findAll({
@@ -196,35 +216,49 @@ exports.getMyAssignedProjects = catchAsync(async (req, res) => {
     raw: false,
   });
 
-  // If user is RM, also include direct reports' project assignments
-  const directReports = await User.findAll({
-    where: { reporting_manager_id: req.user.id, status: 'active' },
-    attributes: ['id'],
-  });
-
-  let reportAssignments = [];
-  if (directReports.length > 0) {
-    reportAssignments = await ProjectAssignment.findAll({
-      where: { user_id: { [Op.in]: directReports.map(u => u.id) } },
-      include: [{ model: Project, as: 'project' }],
-      raw: false,
-    });
-  }
-
-  // Merge and deduplicate by project ID
+  // Build project list with is_own_assignment flag
   const projectMap = new Map();
-  const addProject = (a) => {
+
+  // Add own assignments first
+  assignments.forEach((a) => {
     if (a.project && !projectMap.has(a.project.id)) {
       const p = a.project.toJSON();
       projectMap.set(p.id, {
         ...p,
         assignment_role: a.role,
         assignment_id: a.id,
+        is_own_assignment: true,
       });
     }
-  };
-  assignments.forEach(addProject);
-  reportAssignments.forEach(addProject);
+  });
+
+  // If scope != 'own' and user is RM, also include direct reports' project assignments
+  if (scope !== 'own') {
+    const directReports = await User.findAll({
+      where: { reporting_manager_id: req.user.id, status: 'active' },
+      attributes: ['id'],
+    });
+
+    if (directReports.length > 0) {
+      const reportAssignments = await ProjectAssignment.findAll({
+        where: { user_id: { [Op.in]: directReports.map(u => u.id) } },
+        include: [{ model: Project, as: 'project' }],
+        raw: false,
+      });
+
+      reportAssignments.forEach((a) => {
+        if (a.project && !projectMap.has(a.project.id)) {
+          const p = a.project.toJSON();
+          projectMap.set(p.id, {
+            ...p,
+            assignment_role: a.role,
+            assignment_id: a.id,
+            is_own_assignment: false,
+          });
+        }
+      });
+    }
+  }
 
   const projects = [...projectMap.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
