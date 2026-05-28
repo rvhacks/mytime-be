@@ -51,6 +51,28 @@ exports.deleteEntry = catchAsync(async (req, res) => {
 });
 
 // ===========================
+// RM/ADMIN: View employee's week timesheet (read-only)
+// ===========================
+
+exports.viewEmployeeWeekTimesheet = catchAsync(async (req, res) => {
+  const { employeeId } = req.params;
+  const { weekStartDate } = req.query;
+  const { User } = require('../infrastructure/models');
+  const AppError = require('../utils/AppError');
+
+  // Admin can view any employee; RM can only view direct reports
+  if (req.user.role !== 'admin') {
+    const directReport = await User.findOne({
+      where: { id: employeeId, reporting_manager_id: req.user.id, status: 'active' },
+    });
+    if (!directReport) throw new AppError('You can only view timesheets of your direct reports', 403);
+  }
+
+  const data = await timesheetService.getTimesheetByWeek(employeeId, weekStartDate);
+  res.json({ status: 'success', data });
+});
+
+// ===========================
 // EMPLOYEE: Submit entries
 // ===========================
 
