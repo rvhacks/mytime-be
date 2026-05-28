@@ -2,15 +2,95 @@
 
 > Crystal TS · Timesheet & Workforce Management System
 
+## Prerequisites
+
+- **Node.js** v20 or higher
+- **PostgreSQL** v16 or higher
+- **npm** v10 or higher
+
+## Setup (Step by Step)
+
+### 1. Clone the repository
+
+```bash
+git clone <your-backend-repo-url>
+cd Backend
+```
+
+### 2. Install dependencies
+
+```bash
+npm install
+```
+
+### 3. Create a PostgreSQL database
+
+Make sure PostgreSQL is running on your system, then create the database:
+
+```bash
+# Using psql
+psql -U postgres -c "CREATE DATABASE mytime_db;"
+```
+
+Or you can use pgAdmin or any other PostgreSQL GUI tool to create a database named `mytime_db`.
+
+### 4. Configure environment variables
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and update the following values:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DB_HOST` | PostgreSQL host | `localhost` |
+| `DB_PORT` | PostgreSQL port | `5432` |
+| `DB_NAME` | Database name | `mytime_db` |
+| `DB_USER` | Database user | `postgres` |
+| `DB_PASSWORD` | Database password | `your_password` |
+| `JWT_SECRET` | Secret key for JWT tokens | `any_random_string` |
+| `JWT_REFRESH_SECRET` | Secret key for refresh tokens | `any_random_string` |
+| `CORS_ORIGIN` | Frontend URL(s), comma-separated | `http://localhost:5173` |
+| `PORT` | Server port | `5001` |
+
+### 5. Start the server
+
+**Development (with auto-reload):**
+
+```bash
+npm run dev
+```
+
+**Production:**
+
+```bash
+npm start
+```
+
+The server will auto-create all database tables on first startup (using Sequelize sync). No manual migrations needed.
+
+### 6. Verify
+
+Once started, you should see:
+
+```
+✅ Database connection established
+✅ Database schema updated
+🚀 Server running on port 5001 (development)
+📚 API Docs: http://localhost:5001/api-docs
+```
+
+Visit `http://localhost:5001/api-docs` to see the Swagger API documentation.
+
 ## Architecture
 
 ```
 src/
 ├── config/          # App, database, swagger configs
 ├── constants/       # Enums, static values
-├── controllers/     # Request/response handlers (thin)
+├── controllers/     # Request/response handlers
 ├── services/        # Business logic layer
-├── repositories/    # Database access layer
 ├── middlewares/     # Auth, error handler, validation
 ├── routes/          # Express route definitions
 ├── validators/      # Joi schemas
@@ -19,75 +99,32 @@ src/
 │   └── models/      # Sequelize models + associations
 ├── app.js           # Express app setup
 └── server.js        # Entry point
-migrations/          # Sequelize migrations (schema-only)
-seeders/             # Seed data
 ```
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Runtime | Node.js 20 LTS |
-| Framework | Express.js |
+| Runtime | Node.js 20+ |
+| Framework | Express.js 5 |
 | Database | PostgreSQL 16 |
-| ORM | Sequelize |
+| ORM | Sequelize 6 |
 | Validation | Joi |
-| Auth | JWT + bcrypt |
-| File Storage | AWS S3 |
+| Auth | JWT + bcryptjs |
+| File Storage | Local (uploads/) or AWS S3 |
 | Logging | Winston |
 | Docs | Swagger (OpenAPI 3.0) |
-| Container | Docker |
 
-## Quick Start
+## Available Scripts
 
-### Prerequisites
-- Node.js 20+
-- PostgreSQL 16+
-- npm
-
-### Setup
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your database credentials
-
-# 3. Create database
-createdb mytime_db
-
-# 4. Run migrations
-npm run db:migrate
-
-# 5. Seed data
-npm run db:seed
-
-# 6. Start development server
-npm run dev
-```
-
-### Docker
-
-```bash
-# From project root (parent of Frontend + Backend)
-docker-compose up --build
-```
-
-## API Documentation
-
-Start the server and visit: **http://localhost:5000/api-docs**
-
-## Seeded Users
-
-| Email | Password | Role |
-|-------|----------|------|
-| admin@crystalts.com | admin123 | Admin |
-| sarah@crystalts.com | admin123 | Manager |
-| mike@crystalts.com | admin123 | Employee |
-| emily@crystalts.com | admin123 | Employee |
-| david@crystalts.com | admin123 | Employee |
+| Command | Description |
+|---------|-------------|
+| `npm start` | Start production server |
+| `npm run dev` | Start with nodemon (auto-reload) |
+| `npm run db:migrate` | Run database migrations |
+| `npm run db:seed` | Seed initial data |
+| `npm run lint` | Run ESLint |
+| `npm run format` | Format code with Prettier |
 
 ## API Endpoints
 
@@ -98,48 +135,53 @@ Start the server and visit: **http://localhost:5000/api-docs**
 | POST | `/api/auth/forgot-password` | Request OTP |
 | POST | `/api/auth/verify-otp` | Verify OTP |
 | POST | `/api/auth/reset-password` | Reset password |
-| GET | `/api/auth/me` | Current user |
+| POST | `/api/auth/change-password` | Change password |
+| GET | `/api/auth/me` | Current user info |
 
-### User
+### User Profile
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/users/profile` | Get profile |
-| PUT | `/api/users/profile` | Update profile |
-| POST | `/api/users/avatar` | Upload avatar (S3) |
+| PUT | `/api/users/profile` | Update profile (admin only) |
+| POST | `/api/users/avatar` | Upload avatar |
 | PUT | `/api/users/change-password` | Change password |
 
 ### Timesheets
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/timesheets/my` | My timesheets |
-| GET | `/api/timesheets/week?weekStartDate=` | Get week |
-| POST | `/api/timesheets/save` | Save/create |
-| POST | `/api/timesheets/submit` | Submit |
-| POST | `/api/timesheets/recall/:id` | Recall |
-| GET | `/api/timesheets/detail/:id` | View detail |
-| GET | `/api/timesheets/approvals` | Pending (manager) |
-| POST | `/api/timesheets/approvals/action` | Approve/reject |
+| GET | `/api/timesheets/my` | List my timesheets |
+| GET | `/api/timesheets/week?weekStartDate=YYYY-MM-DD` | Get specific week |
+| POST | `/api/timesheets/save` | Save draft entries |
+| POST | `/api/timesheets/submit` | Submit entries |
+| POST | `/api/timesheets/recall` | Recall entries |
+| DELETE | `/api/timesheets/entry/:entryId` | Delete draft entry |
+| GET | `/api/timesheets/assigned-projects` | My assigned projects |
+| GET | `/api/timesheets/approvals` | Pending approvals (manager) |
+| POST | `/api/timesheets/approvals/action` | Approve/reject entries |
 | GET | `/api/timesheets/reports` | Reports data |
 
-### Admin (Admin role only)
+### Admin
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| CRUD | `/api/admin/designations` | Designations |
-| CRUD | `/api/admin/employees` | Employees |
-| CRUD | `/api/admin/projects` | Projects |
-| CRUD | `/api/admin/assignments` | Assignments |
-| CRUD | `/api/admin/milestones` | Milestones |
+| CRUD | `/api/admin/designations` | Manage designations |
+| CRUD | `/api/admin/employees` | Manage employees |
+| CRUD | `/api/admin/projects` | Manage projects |
+| CRUD | `/api/admin/assignments` | Manage project assignments |
+| CRUD | `/api/admin/milestones` | Manage milestones |
 
-## Environment Variables
+## Deployment Notes
 
-See `.env.example` for all required variables.
+- This is a **standalone** Node.js API. It can be deployed independently on any server.
+- The frontend connects to this API via the `VITE_API_URL` environment variable.
+- Set `CORS_ORIGIN` in `.env` to your frontend's deployed URL.
+- Avatar files are stored in the `uploads/` directory by default. For production, configure AWS S3.
+- Database tables are auto-created on server startup.
 
 ## Security
 
 - **Helmet** — HTTP security headers
 - **CORS** — Configurable origin whitelist
-- **Rate Limiting** — 100 req/15min per IP
+- **Rate Limiting** — Configurable per-IP rate limits
 - **HPP** — HTTP parameter pollution protection
-- **JWT** — Token-based auth with expiry
-- **bcrypt** — Password hashing (12 rounds)
-- **Central Error Handler** — No stack traces in production
+- **JWT** — Token-based auth with configurable expiry
+- **bcryptjs** — Password hashing
