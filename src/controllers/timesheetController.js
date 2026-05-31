@@ -63,7 +63,7 @@ exports.viewEmployeeWeekTimesheet = catchAsync(async (req, res) => {
   // Look up user by employee_id string (e.g. CT26-0001)
   const employee = await User.findOne({
     where: { employee_id: employeeId, status: 'active' },
-    attributes: ['id', 'employee_id', 'first_name', 'last_name', 'email'],
+    attributes: ['id', 'employee_id', 'first_name', 'last_name', 'email', 'avatar_path'],
   });
   if (!employee) throw new AppError('Employee not found', 404);
 
@@ -180,7 +180,7 @@ exports.getTimesheetDetail = catchAsync(async (req, res) => {
         include: [
           { model: Project, as: 'project', attributes: ['id', 'name', 'project_code', 'color'] },
           { model: Milestone, as: 'milestone', attributes: ['id', 'name'] },
-          { model: User, as: 'reviewer', attributes: ['id', 'first_name', 'last_name'] },
+          { model: User, as: 'reviewer', attributes: ['id', 'first_name', 'last_name', 'avatar_path'] },
         ],
       },
       { model: User, as: 'user', attributes: { exclude: ['password'] } },

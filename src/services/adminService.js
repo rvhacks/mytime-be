@@ -489,7 +489,7 @@ class AdminService {
     // Get manager's direct reports
     const directReports = await User.findAll({
       where: { reporting_manager_id: managerId, status: 'active' },
-      attributes: ['id', 'first_name', 'last_name', 'email', 'employee_id'],
+      attributes: ['id', 'first_name', 'last_name', 'email', 'employee_id', 'avatar_path'],
     });
     const drIds = directReports.map(u => u.id);
     if (drIds.length === 0) return { directReports: [], entries: [] };
@@ -515,7 +515,7 @@ class AdminService {
             user_id: { [Op.in]: drIds },
             week_start_date: { [Op.between]: [startDate, endDate] },
           },
-          include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'email', 'employee_id'] }],
+          include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'email', 'employee_id', 'avatar_path'] }],
         },
         { model: Project, as: 'project', attributes: ['id', 'name', 'project_code', 'project_id'] },
         { model: Milestone, as: 'milestone', attributes: ['id', 'name'] },
