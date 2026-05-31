@@ -27,6 +27,9 @@ router.get('/project/:projectId', tc.getProjectDetail);
 router.get('/approvals', authorize('manager', 'admin'), tc.getPendingApprovals);
 router.post('/approvals/action', authorize('manager', 'admin'), tc.approvalAction);
 
+// ---- RM/Admin: view employee's specific week timesheet (read-only) ----
+router.get('/employee/:employeeId/week', tc.viewEmployeeWeekTimesheet);
+
 // ---- Admin: view employee timesheets ----
 router.get('/employee/:employeeId', authorize('admin'), tc.getEmployeeTimesheets);
 

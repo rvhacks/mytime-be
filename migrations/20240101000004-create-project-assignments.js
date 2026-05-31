@@ -13,17 +13,16 @@ module.exports = {
         references: { model: 'projects', key: 'id' }, onUpdate: 'CASCADE', onDelete: 'CASCADE',
       },
       rm_id: {
-        type: Sequelize.UUID, allowNull: false,
-        references: { model: 'users', key: 'id' }, onUpdate: 'CASCADE', onDelete: 'CASCADE',
+        type: Sequelize.UUID, allowNull: true,
+        references: { model: 'users', key: 'id' }, onUpdate: 'CASCADE', onDelete: 'SET NULL',
       },
-      role: { type: Sequelize.ENUM('IC', 'MS', 'TPM', 'PM', 'QA', 'BA'), allowNull: false },
+      role: { type: Sequelize.STRING(10), allowNull: false },
       created_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
       updated_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
     });
 
     await queryInterface.addIndex('project_assignments', ['user_id', 'project_id'], { unique: true });
     await queryInterface.addIndex('project_assignments', ['project_id']);
-    await queryInterface.addIndex('project_assignments', ['rm_id']);
   },
 
   async down(queryInterface) {

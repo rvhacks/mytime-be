@@ -322,9 +322,9 @@ class AdminService {
     const { TimesheetEntry, Timesheet, User, Project, ProjectAssignment } = require('../infrastructure/models');
     const { Op, fn, col, literal } = require('sequelize');
 
+    // Current month range: 1st of this month to today
     const now = new Date();
-    const thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const isAdmin = requestingUser.role === 'admin';
     const userId = requestingUser.id;
@@ -332,7 +332,7 @@ class AdminService {
     if (!isAdmin) {
       // --- Employee personal stats ---
       const userTimesheets = await Timesheet.findAll({
-        where: { user_id: userId, week_start_date: { [Op.gte]: thirtyDaysAgo } },
+        where: { user_id: userId, week_start_date: { [Op.gte]: monthStart } },
         attributes: ['id'],
         raw: true,
       });
@@ -387,7 +387,7 @@ class AdminService {
 
     const totalResult = await TimesheetEntry.findAll({
       where: { status: { [Op.in]: nonDraftStatuses } },
-      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: thirtyDaysAgo } }, attributes: [] }],
+      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: monthStart } }, attributes: [] }],
       attributes: [[literal('COALESCE(SUM(hours_mon + hours_tue + hours_wed + hours_thu + hours_fri + hours_sat + hours_sun), 0)'), 'totalHours']],
       raw: true,
     });
@@ -395,7 +395,7 @@ class AdminService {
 
     const billableResult = await TimesheetEntry.findAll({
       where: { status: { [Op.in]: nonDraftStatuses }, billable: true },
-      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: thirtyDaysAgo } }, attributes: [] }],
+      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: monthStart } }, attributes: [] }],
       attributes: [[literal('COALESCE(SUM(hours_mon + hours_tue + hours_wed + hours_thu + hours_fri + hours_sat + hours_sun), 0)'), 'billableHours']],
       raw: true,
     });
@@ -403,7 +403,7 @@ class AdminService {
 
     const nonBillableResult = await TimesheetEntry.findAll({
       where: { status: { [Op.in]: nonDraftStatuses }, billable: false },
-      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: thirtyDaysAgo } }, attributes: [] }],
+      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: monthStart } }, attributes: [] }],
       attributes: [[literal('COALESCE(SUM(hours_mon + hours_tue + hours_wed + hours_thu + hours_fri + hours_sat + hours_sun), 0)'), 'nonBillableHours']],
       raw: true,
     });
@@ -411,11 +411,11 @@ class AdminService {
 
     const totalEntries = await TimesheetEntry.count({
       where: { status: { [Op.in]: nonDraftStatuses } },
-      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: thirtyDaysAgo } }, attributes: [] }],
+      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: monthStart } }, attributes: [] }],
     });
     const approvedEntries = await TimesheetEntry.count({
       where: { status: 'approved' },
-      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: thirtyDaysAgo } }, attributes: [] }],
+      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: monthStart } }, attributes: [] }],
     });
     const approvalRate = totalEntries > 0 ? Math.round((approvedEntries / totalEntries) * 100) : 0;
 
