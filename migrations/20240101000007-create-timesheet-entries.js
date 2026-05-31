@@ -25,12 +25,24 @@ module.exports = {
       hours_fri: { type: Sequelize.DECIMAL(4, 2), defaultValue: 0 },
       hours_sat: { type: Sequelize.DECIMAL(4, 2), defaultValue: 0 },
       hours_sun: { type: Sequelize.DECIMAL(4, 2), defaultValue: 0 },
+      // Per-entry workflow state
+      status: { type: Sequelize.STRING(20), defaultValue: 'draft' },
+      submitted_at: { type: Sequelize.DATE, allowNull: true },
+      reviewed_by: {
+        type: Sequelize.UUID, allowNull: true,
+        references: { model: 'users', key: 'id' }, onUpdate: 'CASCADE', onDelete: 'SET NULL',
+      },
+      reviewed_at: { type: Sequelize.DATE, allowNull: true },
+      review_comments: { type: Sequelize.TEXT, allowNull: true },
+      resubmission_count: { type: Sequelize.INTEGER, defaultValue: 0 },
+      rejection_history: { type: Sequelize.JSONB, allowNull: true },
       created_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
       updated_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
     });
 
     await queryInterface.addIndex('timesheet_entries', ['timesheet_id']);
     await queryInterface.addIndex('timesheet_entries', ['project_id']);
+    await queryInterface.addIndex('timesheet_entries', ['status']);
   },
 
   async down(queryInterface) {
