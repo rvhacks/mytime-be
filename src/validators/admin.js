@@ -1,5 +1,4 @@
 const Joi = require('joi');
-const { PROJECT_ROLE_KEYS } = require('../constants');
 
 const createDesignationSchema = Joi.object({
   name: Joi.string().min(2).max(200).required(),
@@ -13,8 +12,7 @@ const createEmployeeSchema = Joi.object({
   dob: Joi.date().required(),
   designationId: Joi.string().uuid().required(),
   joiningDate: Joi.date().required(),
-  role: Joi.string().valid('admin', 'manager', 'employee').default('employee'),
-  department: Joi.string().max(100).optional().allow('', null),
+  role: Joi.string().valid('admin', 'employee').default('employee'),
   reportingManagerId: Joi.string().uuid().optional().allow('', null),
 });
 
@@ -28,16 +26,20 @@ const createProjectSchema = Joi.object({
   status: Joi.string().valid('active', 'completed', 'on-hold').default('active'),
 });
 
+// Role is validated as any non-empty string (max 20 chars).
+// The frontend populates the dropdown from the roles API, so the
+// backend doesn't need a hardcoded list. New roles added to the DB
+// are automatically accepted.
 const createAssignmentSchema = Joi.object({
   userId: Joi.string().uuid().required(),
   projectId: Joi.string().uuid().required(),
-  role: Joi.string().valid(...PROJECT_ROLE_KEYS).required(),
+  role: Joi.string().max(20).required(),
 });
 
 const createMilestoneSchema = Joi.object({
   name: Joi.string().min(1).max(255).required(),
   description: Joi.string().optional().allow('', null),
-  role: Joi.string().valid(...PROJECT_ROLE_KEYS).required(),
+  role: Joi.string().max(20).required(),
 });
 
 module.exports = {
