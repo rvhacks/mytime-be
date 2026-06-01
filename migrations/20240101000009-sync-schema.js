@@ -146,12 +146,10 @@ module.exports = {
       );
     } catch (e) { /* already VARCHAR */ }
 
-    // Make rm_id nullable (model allows null)
+    // Drop orphaned rm_id column (model doesn't have it; RM is tracked via users.reporting_manager_id)
     try {
-      await queryInterface.sequelize.query(
-        `ALTER TABLE "project_assignments" ALTER COLUMN "rm_id" DROP NOT NULL`
-      );
-    } catch (e) { /* already nullable */ }
+      await queryInterface.removeColumn('project_assignments', 'rm_id');
+    } catch (e) { /* column doesn't exist */ }
 
     // ======================================================================
     // 4. MILESTONES TABLE — fixes
@@ -166,23 +164,19 @@ module.exports = {
       );
     } catch (e) { /* already VARCHAR */ }
 
-    // Fix status column: ENUM → STRING or drop if model doesn't define it
-    // The model doesn't define a status field, but the migration created one.
-    // We'll keep it but convert from ENUM to VARCHAR for safety.
+    // Drop orphaned project_id column (model treats milestones as role-based templates, no project FK)
+    // Must drop FK constraint and index first
     try {
-      await queryInterface.sequelize.query(
-        `ALTER TABLE "milestones" ALTER COLUMN "status" DROP DEFAULT`
-      );
-      await queryInterface.sequelize.query(
-        `ALTER TABLE "milestones" ALTER COLUMN "status" TYPE VARCHAR(20) USING status::VARCHAR(20)`
-      );
-      await queryInterface.sequelize.query(
-        `ALTER TABLE "milestones" ALTER COLUMN "status" SET DEFAULT 'pending'`
-      );
+      await queryInterface.removeColumn('milestones', 'project_id');
+    } catch (e) { /* column doesn't exist */ }
+
+    // Drop orphaned status column (model doesn't define status for milestones)
+    try {
+      await queryInterface.removeColumn('milestones', 'status');
       await queryInterface.sequelize.query(
         `DROP TYPE IF EXISTS "enum_milestones_status"`
       );
-    } catch (e) { /* already VARCHAR */ }
+    } catch (e) { /* column doesn't exist */ }
 
     // ======================================================================
     // 5. TIMESHEET_ENTRIES TABLE — missing per-entry workflow columns
