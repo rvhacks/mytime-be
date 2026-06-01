@@ -136,10 +136,10 @@ module.exports = {
     // ======================================================================
     // 3. PROJECT_ASSIGNMENTS TABLE — fixes
     // ======================================================================
-    // Fix role column: ENUM → STRING(10)
+    // Fix role column: ENUM → STRING(100)
     try {
       await queryInterface.sequelize.query(
-        `ALTER TABLE "project_assignments" ALTER COLUMN "role" TYPE VARCHAR(10) USING role::VARCHAR(10)`
+        `ALTER TABLE "project_assignments" ALTER COLUMN "role" TYPE VARCHAR(100) USING role::VARCHAR(100)`
       );
       await queryInterface.sequelize.query(
         `DROP TYPE IF EXISTS "enum_project_assignments_role"`
@@ -154,10 +154,10 @@ module.exports = {
     // ======================================================================
     // 4. MILESTONES TABLE — fixes
     // ======================================================================
-    // Fix role column: ENUM → STRING(10)
+    // Fix role column: ENUM → STRING(100)
     try {
       await queryInterface.sequelize.query(
-        `ALTER TABLE "milestones" ALTER COLUMN "role" TYPE VARCHAR(10) USING role::VARCHAR(10)`
+        `ALTER TABLE "milestones" ALTER COLUMN "role" TYPE VARCHAR(100) USING role::VARCHAR(100)`
       );
       await queryInterface.sequelize.query(
         `DROP TYPE IF EXISTS "enum_milestones_role"`

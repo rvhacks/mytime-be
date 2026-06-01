@@ -33,13 +33,13 @@ const createProjectSchema = Joi.object({
 const createAssignmentSchema = Joi.object({
   userId: Joi.string().uuid().required(),
   projectId: Joi.string().uuid().required(),
-  role: Joi.string().max(20).required(),
+  role: Joi.string().max(100).required(),
 });
 
 const createMilestoneSchema = Joi.object({
   name: Joi.string().min(1).max(255).required(),
   description: Joi.string().optional().allow('', null),
-  role: Joi.string().max(20).required(),
+  role: Joi.string().max(100).required(),
 });
 
 module.exports = {

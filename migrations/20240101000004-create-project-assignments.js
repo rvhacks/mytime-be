@@ -12,7 +12,7 @@ module.exports = {
         type: Sequelize.UUID, allowNull: false,
         references: { model: 'projects', key: 'id' }, onUpdate: 'CASCADE', onDelete: 'CASCADE',
       },
-      role: { type: Sequelize.STRING(10), allowNull: false },
+      role: { type: Sequelize.STRING(100), allowNull: false },
       created_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
       updated_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
     });
