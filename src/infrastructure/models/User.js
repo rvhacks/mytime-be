@@ -49,10 +49,7 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING(100),
       allowNull: true,
     },
-    avatar_key: {
-      type: DataTypes.STRING(500),
-      allowNull: true,
-    },
+
     avatar_path: {
       type: DataTypes.STRING(500),
       allowNull: true,
