@@ -10,7 +10,7 @@ router.get('/', async (req, res, next) => {
   try {
     const { Role } = require('../infrastructure/models');
     const roles = await Role.findAll({
-      attributes: ['id', 'key', 'label'],
+      attributes: ['id', 'label'],
       order: [['label', 'ASC']],
     });
     res.json({ status: 'success', data: roles });

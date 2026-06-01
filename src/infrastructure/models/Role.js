@@ -11,14 +11,10 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      key: {
-        type: DataTypes.STRING(20),
-        allowNull: false,
-        unique: true,
-      },
       label: {
         type: DataTypes.STRING(100),
         allowNull: false,
+        unique: true,
       },
     },
     {
