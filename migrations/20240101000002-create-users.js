@@ -20,7 +20,6 @@ module.exports = {
         onDelete: 'SET NULL',
       },
       department: { type: Sequelize.STRING(100), allowNull: true },
-      avatar_key: { type: Sequelize.STRING(500), allowNull: true },
       avatar_path: { type: Sequelize.STRING(500), allowNull: true },
       joining_date: { type: Sequelize.DATEONLY, allowNull: true },
       reporting_manager_id: {
