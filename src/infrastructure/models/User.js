@@ -45,10 +45,6 @@ module.exports = (sequelize) => {
       type: DataTypes.UUID,
       allowNull: true,
     },
-    department: {
-      type: DataTypes.STRING(100),
-      allowNull: true,
-    },
 
     avatar_path: {
       type: DataTypes.STRING(500),

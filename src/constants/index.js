@@ -6,18 +6,8 @@ module.exports = {
     // A user is a manager if they have at least one direct report.
   },
 
-  // Centralized project roles with full labels – single source of truth
-  PROJECT_ROLES: {
-    IC:  { key: 'IC',  label: 'Implementation Consultant' },
-    TC:  { key: 'TC',  label: 'Technical Consultant' },
-    TPM: { key: 'TPM', label: 'Technical Project Manager' },
-    MS:  { key: 'MS',  label: 'Managed Services' },
-    QA:  { key: 'QA',  label: 'Quality Analyst' },
-    BA:  { key: 'BA',  label: 'Business Analyst' },
-    PM:  { key: 'PM',  label: 'Project Manager' },
-  },
-
-  PROJECT_ROLE_KEYS: ['IC', 'TC', 'TPM', 'MS', 'QA', 'BA', 'PM'],
+  // Project roles are now stored in the `roles` table (master data).
+  // Use the /api/roles endpoint or Role model to query them.
 
   PROJECT_STATUS: ['active', 'completed', 'on-hold'],
 

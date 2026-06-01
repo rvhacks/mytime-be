@@ -63,7 +63,6 @@ class UserService {
     if (data.firstName) updateData.first_name = data.firstName;
     if (data.lastName) updateData.last_name = data.lastName;
     if (data.mobile) updateData.mobile = data.mobile;
-    if (data.department) updateData.department = data.department;
     if (data.dob) updateData.dob = data.dob;
     if (data.designationId) updateData.designation_id = data.designationId;
     return userRepository.update(userId, updateData);

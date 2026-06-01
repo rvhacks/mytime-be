@@ -90,7 +90,6 @@ class AdminService {
       password: hashedPassword,
       role: data.role || 'employee',
       designation_id: data.designationId,
-      department: data.department,
       joining_date: data.joiningDate,
       reporting_manager_id: data.reportingManagerId || null,
       status: 'active',
@@ -116,7 +115,7 @@ class AdminService {
     if (data.mobile) updateData.mobile = data.mobile;
     if (data.dob) updateData.dob = data.dob;
     if (data.designationId) updateData.designation_id = data.designationId;
-    if (data.department) updateData.department = data.department;
+
     if (data.joiningDate) updateData.joining_date = data.joiningDate;
     if (data.role) updateData.role = data.role;
     if (data.reportingManagerId !== undefined) updateData.reporting_manager_id = data.reportingManagerId || null;
@@ -381,7 +380,7 @@ class AdminService {
     }
 
     // --- Admin company-wide stats ---
-    const totalEmployees = await User.count({ where: { status: 'active' } });
+    const totalEmployees = await User.count({ where: { status: 'active', role: { [Op.ne]: 'admin' } } });
     const activeProjects = await Project.count({ where: { status: 'active' } });
     const nonDraftStatuses = ['submitted', 'resubmitted', 'approved', 'rejected'];
 
@@ -469,6 +468,7 @@ class AdminService {
         lastName: manager.last_name,
         email: manager.email,
         employeeId: manager.employee_id,
+        avatarUrl: manager.avatar_path || null,
         pendingCount,
         totalDirectReports: directReportIds.length,
       });

@@ -145,8 +145,12 @@ exports.getRecentActivity = catchAsync(async (req, res) => {
 
 // ---- ROLE CONSTANTS ----
 exports.getRoleConstants = catchAsync(async (req, res) => {
-  const { PROJECT_ROLES } = require('../constants');
-  res.json({ status: 'success', data: PROJECT_ROLES });
+  const { Role } = require('../infrastructure/models');
+  const roles = await Role.findAll({ attributes: ['key', 'label'], order: [['label', 'ASC']] });
+  // Return in legacy format: { IC: { key: 'IC', label: '...' }, ... }
+  const data = {};
+  roles.forEach(r => { data[r.key] = { key: r.key, label: r.label }; });
+  res.json({ status: 'success', data });
 });
 
 // ---- ADMIN APPROVALS: Manager Dashboard ----

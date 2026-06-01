@@ -25,6 +25,7 @@ const TimesheetEntry = require('./TimesheetEntry')(sequelize);
 const Otp = require('./Otp')(sequelize);
 const Notification = require('./Notification')(sequelize);
 const RejectionHistory = require('./RejectionHistory')(sequelize);
+const Role = require('./Role')(sequelize);
 
 // ---- ASSOCIATIONS ----
 
@@ -94,4 +95,5 @@ module.exports = {
   Otp,
   Notification,
   RejectionHistory,
+  Role,
 };
