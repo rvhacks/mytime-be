@@ -66,6 +66,9 @@ class TimesheetService {
   async saveEntries(userId, data) {
     const { weekStartDate, weekEndDate, entries } = data;
 
+    // tempId → realId mapping (only for newly created entries)
+    const tempIdMap = {};
+
     await sequelize.transaction(async (t) => {
       // Get or create the week container
       let ts = await Timesheet.findOne({
@@ -81,53 +84,75 @@ class TimesheetService {
         }, { transaction: t });
       }
 
-      // Get existing entries that are locked (submitted/approved)
+      // Get all existing entries for this timesheet
       const existingEntries = await TimesheetEntry.findAll({
         where: { timesheet_id: ts.id },
         transaction: t,
       });
 
-      const lockedEntryIds = existingEntries
-        .filter((e) => [ENTRY_STATUS.SUBMITTED, ENTRY_STATUS.APPROVED, ENTRY_STATUS.REJECTED, ENTRY_STATUS.RESUBMITTED].includes(e.status))
+      // Build a set of existing editable entry IDs (draft/recalled/rejected)
+      const editableExisting = existingEntries.filter(
+        (e) => [ENTRY_STATUS.DRAFT, ENTRY_STATUS.RECALLED, ENTRY_STATUS.REJECTED].includes(e.status)
+      );
+      const editableExistingMap = new Map(editableExisting.map((e) => [e.id, e]));
+
+      const validEntries = (entries || []).filter((e) => e.projectId);
+      const sentIds = new Set();
+
+      for (const e of validEntries) {
+        const entryFields = {
+          project_id: e.projectId,
+          milestone_id: e.milestoneId || null,
+          task_description: e.taskDescription || '',
+          billable: e.billable !== false,
+          hours_mon: e.hours?.mon || 0,
+          hours_tue: e.hours?.tue || 0,
+          hours_wed: e.hours?.wed || 0,
+          hours_thu: e.hours?.thu || 0,
+          hours_fri: e.hours?.fri || 0,
+          hours_sat: e.hours?.sat || 0,
+          hours_sun: e.hours?.sun || 0,
+        };
+
+        const existingEntry = editableExistingMap.get(e.id);
+
+        if (existingEntry) {
+          // UPDATE existing entry in place — preserves ID & rejection history
+          await existingEntry.update(entryFields, { transaction: t });
+          sentIds.add(e.id);
+        } else {
+          // CREATE new entry
+          const created = await TimesheetEntry.create({
+            ...entryFields,
+            timesheet_id: ts.id,
+            status: ENTRY_STATUS.DRAFT,
+          }, { transaction: t });
+
+          // Map frontend tempId to the new DB id
+          if (e.tempId) {
+            tempIdMap[e.tempId] = created.id;
+          }
+        }
+      }
+
+      // DELETE editable entries that the user removed (exist in DB but not sent)
+      const idsToDelete = editableExisting
+        .filter((e) => !sentIds.has(e.id))
         .map((e) => e.id);
 
-      // Delete only editable (draft/recalled/rejected) entries — locked ones stay
-      await TimesheetEntry.destroy({
-        where: {
-          timesheet_id: ts.id,
-          id: { [Op.notIn]: lockedEntryIds },
-        },
-        transaction: t,
-      });
-
-      // Insert new entries (these are the editable rows from the frontend)
-      if (entries && entries.length > 0) {
-        const entryData = entries
-          .filter((e) => e.projectId) // skip empty rows
-          .map((e) => ({
-            timesheet_id: ts.id,
-            project_id: e.projectId,
-            milestone_id: e.milestoneId || null,
-            task_description: e.taskDescription || '',
-            billable: e.billable !== false,
-            hours_mon: e.hours?.mon || 0,
-            hours_tue: e.hours?.tue || 0,
-            hours_wed: e.hours?.wed || 0,
-            hours_thu: e.hours?.thu || 0,
-            hours_fri: e.hours?.fri || 0,
-            hours_sat: e.hours?.sat || 0,
-            hours_sun: e.hours?.sun || 0,
-            status: ENTRY_STATUS.DRAFT,
-          }));
-
-        if (entryData.length > 0) {
-          await TimesheetEntry.bulkCreate(entryData, { transaction: t });
-        }
+      if (idsToDelete.length > 0) {
+        await TimesheetEntry.destroy({
+          where: { id: { [Op.in]: idsToDelete } },
+          transaction: t,
+        });
       }
     });
 
-    // Return full timesheet AFTER transaction commits
-    return this.getTimesheetByWeek(userId, weekStartDate);
+    // Return full timesheet AFTER transaction commits + tempIdMap
+    const fullTimesheet = await this.getTimesheetByWeek(userId, weekStartDate);
+    const result = fullTimesheet ? fullTimesheet.toJSON() : {};
+    result.tempIdMap = tempIdMap;
+    return result;
   }
 
   // ===========================
