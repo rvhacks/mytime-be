@@ -199,6 +199,12 @@ class TimesheetService {
             reviewed_by: null,
             reviewed_at: null,
           }, { transaction: t });
+        } else if ((entry.resubmission_count || 0) > 0) {
+          // Previously rejected & resubmitted, then recalled — keep resubmitted status
+          await entry.update({
+            status: ENTRY_STATUS.RESUBMITTED,
+            submitted_at: new Date(),
+          }, { transaction: t });
         } else {
           await entry.update({
             status: ENTRY_STATUS.SUBMITTED,
@@ -240,7 +246,7 @@ class TimesheetService {
       }
 
       await TimesheetEntry.update(
-        { status: ENTRY_STATUS.DRAFT, submitted_at: null },
+        { status: ENTRY_STATUS.RECALLED, submitted_at: null },
         { where: { id: { [Op.in]: entryIds } }, transaction: t }
       );
 

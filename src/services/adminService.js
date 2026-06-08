@@ -288,7 +288,12 @@ class AdminService {
   }
 
   // ---- MILESTONES (Role-based templates) ----
-  async getMilestones(options) { return milestoneRepository.findAll(options); }
+  async getMilestones(options) {
+    if (options.role) {
+      options.where = { ...(options.where || {}), role: options.role };
+    }
+    return milestoneRepository.findAll(options);
+  }
 
   async getMilestonesByRole(role) { return milestoneRepository.findByRole(role); }
 
@@ -454,7 +459,7 @@ class AdminService {
       const directReportIds = manager.directReports.map(dr => dr.id);
       // Count pending (submitted) entries from direct reports
       const pendingCount = await TimesheetEntry.count({
-        where: { status: 'submitted' },
+        where: { status: { [Op.in]: ['submitted', 'resubmitted'] } },
         include: [{
           model: Timesheet, as: 'timesheet',
           where: { user_id: { [Op.in]: directReportIds } },
@@ -494,26 +499,14 @@ class AdminService {
     const drIds = directReports.map(u => u.id);
     if (drIds.length === 0) return { directReports: [], entries: [] };
 
-    // Parse month (e.g., "2026-05")
-    let startDate, endDate;
-    if (month) {
-      const [y, m] = month.split('-').map(Number);
-      startDate = new Date(y, m - 1, 1).toISOString().slice(0, 10);
-      endDate = new Date(y, m, 0).toISOString().slice(0, 10);
-    } else {
-      // Default: current month
-      const now = new Date();
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-    }
-
+    // Fetch ALL pending (submitted/resubmitted) entries across all dates
     const entries = await TimesheetEntry.findAll({
+      where: { status: { [Op.in]: ['submitted', 'resubmitted'] } },
       include: [
         {
           model: Timesheet, as: 'timesheet',
           where: {
             user_id: { [Op.in]: drIds },
-            week_start_date: { [Op.between]: [startDate, endDate] },
           },
           include: [{ model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'email', 'employee_id', 'avatar_path'] }],
         },
@@ -693,7 +686,7 @@ class AdminService {
   }
 
   // ---- Past Submitted Timesheets (all employees) ----
-  async getPastSubmittedTimesheets({ startDate, endDate, employeeId, projectId, page = 1, limit = 20 }) {
+  async getPastSubmittedTimesheets({ startDate, endDate, employeeId, projectId, status, page = 1, limit = 20 }) {
     const { sequelize } = require('../infrastructure/models');
     const { QueryTypes } = require('sequelize');
 
@@ -701,6 +694,16 @@ class AdminService {
 
     let whereClauses = `te.status IN ('submitted', 'resubmitted', 'approved', 'rejected') AND u.role != 'admin'`;
     const replacements = {};
+
+    // Status filter
+    if (status) {
+      if (status === 'pending_approval') {
+        whereClauses = `te.status IN ('submitted', 'resubmitted') AND u.role != 'admin'`;
+      } else {
+        whereClauses = `te.status = :statusFilter AND u.role != 'admin'`;
+        replacements.statusFilter = status;
+      }
+    }
 
     if (startDate) {
       whereClauses += ` AND t.week_start_date >= :startDate`;
@@ -711,7 +714,12 @@ class AdminService {
       replacements.endDate = endDate;
     }
     if (employeeId) {
-      whereClauses += ` AND u.id = :employeeId`;
+      // Support both UUID and employee_id format (e.g. CT26-0001)
+      if (employeeId.match(/^[0-9a-f]{8}-/i)) {
+        whereClauses += ` AND u.id = :employeeId`;
+      } else {
+        whereClauses += ` AND u.employee_id = :employeeId`;
+      }
       replacements.employeeId = employeeId;
     }
     if (projectId) {

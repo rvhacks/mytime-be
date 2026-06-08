@@ -106,7 +106,8 @@ exports.deleteAssignment = catchAsync(async (req, res) => {
 // ---- MILESTONES ----
 exports.getMilestones = catchAsync(async (req, res) => {
   const { page, limit, offset, search, sortBy, sortOrder } = buildPaginationQuery(req.query);
-  const data = await adminService.getMilestones({ limit, offset, search, order: [[sortBy, sortOrder]] });
+  const role = req.query.role || null;
+  const data = await adminService.getMilestones({ limit, offset, search, role, order: [[sortBy, sortOrder]] });
   res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 
@@ -200,16 +201,16 @@ exports.exportTimesheetReport = catchAsync(async (req, res) => {
 });
 
 exports.getPastSubmittedTimesheets = catchAsync(async (req, res) => {
-  const { startDate, endDate, employeeId, projectId } = req.query;
+  const { startDate, endDate, employeeId, projectId, status } = req.query;
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 20;
-  const data = await adminService.getPastSubmittedTimesheets({ startDate, endDate, employeeId, projectId, page, limit });
+  const data = await adminService.getPastSubmittedTimesheets({ startDate, endDate, employeeId, projectId, status, page, limit });
   res.json({ status: 'success', data });
 });
 
 exports.exportPastSubmittedTimesheets = catchAsync(async (req, res) => {
-  const { startDate, endDate, employeeId, projectId } = req.query;
-  const data = await adminService.getPastSubmittedTimesheets({ startDate, endDate, employeeId, projectId, page: 1, limit: 1000000 });
+  const { startDate, endDate, employeeId, projectId, status } = req.query;
+  const data = await adminService.getPastSubmittedTimesheets({ startDate, endDate, employeeId, projectId, status, page: 1, limit: 1000000 });
 
   const csvHeader = 'Employee ID,Employee Name,Project,Week,Status,Billable,Task Description,Total Hours,Submitted At,Review Comments';
   const csvRows = data.rows.map(r =>
