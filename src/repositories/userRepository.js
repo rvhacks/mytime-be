@@ -36,6 +36,7 @@ class UserRepository {
         { first_name: { [Op.iLike]: `%${search}%` } },
         { last_name: { [Op.iLike]: `%${search}%` } },
         { email: { [Op.iLike]: `%${search}%` } },
+        { employee_id: { [Op.iLike]: `%${search}%` } },
       ];
     }
 

@@ -89,7 +89,8 @@ exports.deleteProject = catchAsync(async (req, res) => {
 // ---- ASSIGNMENTS ----
 exports.getAssignments = catchAsync(async (req, res) => {
   const { page, limit, offset, search, sortBy, sortOrder } = buildPaginationQuery(req.query);
-  const data = await adminService.getAssignments({ limit, offset, search, order: [[sortBy, sortOrder]] });
+  const { userId, projectId } = req.query;
+  const data = await adminService.getAssignments({ limit, offset, search, userId, projectId, order: [[sortBy, sortOrder]] });
   res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });
 

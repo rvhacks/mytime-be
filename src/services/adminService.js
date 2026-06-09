@@ -256,7 +256,12 @@ class AdminService {
   async getAssignments(options) {
     const { Op } = require('sequelize');
     const where = { ...(options.where || {}) };
-    // Search handled via include filters in repository
+    if (options.userId) {
+      where.user_id = options.userId;
+    }
+    if (options.projectId) {
+      where.project_id = options.projectId;
+    }
     return assignmentRepository.findAll({ ...options, where });
   }
 
