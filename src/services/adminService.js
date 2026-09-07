@@ -584,11 +584,25 @@ class AdminService {
     if (!startDate) startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
     if (!endDate) endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
 
-    const hoursSql = `COALESCE(te.hours_mon,0) + COALESCE(te.hours_tue,0) + COALESCE(te.hours_wed,0) + COALESCE(te.hours_thu,0) + COALESCE(te.hours_fri,0) + COALESCE(te.hours_sat,0) + COALESCE(te.hours_sun,0)`;
+    // Build date-range-aware hours SQL: only count a day's hours if that day falls within [startDate, endDate]
+    // week_start_date is Monday, so: mon=+0, tue=+1, wed=+2, thu=+3, fri=+4, sat=+5, sun=+6
+    const dayColumns = [
+      { col: 'hours_mon', offset: 0 },
+      { col: 'hours_tue', offset: 1 },
+      { col: 'hours_wed', offset: 2 },
+      { col: 'hours_thu', offset: 3 },
+      { col: 'hours_fri', offset: 4 },
+      { col: 'hours_sat', offset: 5 },
+      { col: 'hours_sun', offset: 6 },
+    ];
+    const hoursSql = dayColumns.map(d =>
+      `(CASE WHEN (t.week_start_date + INTERVAL '${d.offset} days')::date >= :startDate::date AND (t.week_start_date + INTERVAL '${d.offset} days')::date <= :endDate::date THEN COALESCE(te.${d.col}, 0) ELSE 0 END)`
+    ).join(' + ');
 
     // Build optional JOIN conditions for timesheet_entries
+    // Use week_end_date overlap: a week overlaps with [startDate, endDate] if week_start <= endDate AND week_end >= startDate
     let teConds = `te.status IN ('submitted', 'resubmitted', 'approved', 'rejected')
-      AND t.week_start_date >= :startDate AND t.week_start_date <= :endDate`;
+      AND t.week_start_date <= :endDate AND (t.week_start_date + INTERVAL '6 days')::date >= :startDate::date`;
     const replacements = { startDate, endDate };
 
     if (projectId) {
@@ -610,7 +624,7 @@ class AdminService {
     // LEFT JOIN so ALL active employees appear even with 0 hours
     const baseSql = `
       FROM users u
-      LEFT JOIN timesheets t ON t.user_id = u.id AND t.week_start_date >= :startDate AND t.week_start_date <= :endDate
+      LEFT JOIN timesheets t ON t.user_id = u.id AND t.week_start_date <= :endDate AND (t.week_start_date + INTERVAL '6 days')::date >= :startDate::date
       LEFT JOIN timesheet_entries te ON te.timesheet_id = t.id AND ${teConds}
       WHERE ${userWhere}`;
 
