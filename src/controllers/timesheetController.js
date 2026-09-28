@@ -92,6 +92,28 @@ exports.viewEmployeeWeekTimesheet = catchAsync(async (req, res) => {
 });
 
 // ===========================
+// ADMIN: Reopen an approved week for editing
+// ===========================
+
+exports.reopenApprovedWeek = catchAsync(async (req, res) => {
+  const { employeeId } = req.params; // employee_id string like CT26-0001
+  const { weekStartDate } = req.body;
+  const { User } = require('../infrastructure/models');
+  const AppError = require('../utils/AppError');
+
+  if (!weekStartDate) throw new AppError('weekStartDate is required', 400);
+
+  const employee = await User.findOne({
+    where: { employee_id: employeeId, status: 'active' },
+    attributes: ['id', 'employee_id', 'first_name', 'last_name'],
+  });
+  if (!employee) throw new AppError('Employee not found', 404);
+
+  const data = await timesheetService.reopenApprovedWeek(employee.id, weekStartDate);
+  res.json({ status: 'success', data, message: 'Timesheet reopened for editing' });
+});
+
+// ===========================
 // EMPLOYEE: Submit entries
 // ===========================
 
@@ -124,26 +146,8 @@ exports.recallEntries = catchAsync(async (req, res) => {
 exports.getPendingApprovals = catchAsync(async (req, res) => {
   const { page, limit, offset } = buildPaginationQuery(req.query);
 
-  // Admin sees all submitted; manager sees only direct reports
-  let data;
-  if (req.user.role === 'admin') {
-    const { TimesheetEntry, Timesheet, User, Project, Milestone } = require('../infrastructure/models');
-    data = await TimesheetEntry.findAndCountAll({
-      where: { status: 'submitted' },
-      include: [
-        {
-          model: Timesheet, as: 'timesheet',
-          include: [{ model: User, as: 'user', attributes: { exclude: ['password'] } }],
-        },
-        { model: Project, as: 'project', attributes: ['id', 'name', 'project_code', 'color'] },
-        { model: Milestone, as: 'milestone', attributes: ['id', 'name'] },
-      ],
-      order: [['submitted_at', 'DESC']],
-      limit, offset,
-    });
-  } else {
-    data = await timesheetService.getPendingApprovalsForManager(req.user.id, { limit, offset });
-  }
+  // Managers only (admins are blocked at the route): scoped to direct reports
+  const data = await timesheetService.getPendingApprovalsForManager(req.user.id, { limit, offset });
 
   res.json({ status: 'success', data: buildPaginationResponse(data, page, limit) });
 });

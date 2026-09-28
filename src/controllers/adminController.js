@@ -104,6 +104,21 @@ exports.deleteAssignment = catchAsync(async (req, res) => {
   res.json({ status: 'success', message: 'Assignment removed' });
 });
 
+// Export: every employee + their assigned projects (comma-separated), alphabetical by name
+exports.exportEmployeeAssignments = catchAsync(async (req, res) => {
+  const data = await adminService.exportEmployeeAssignments();
+
+  const csvHeader = 'Employee ID,Employee Name,Assigned Projects';
+  const csvRows = data.map(r =>
+    `${r.employeeId || ''},"${(r.employeeName || '').replace(/"/g, '""')}","${(r.projects || '').replace(/"/g, '""')}"`
+  );
+  const csv = [csvHeader, ...csvRows].join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="employee-project-assignments.csv"');
+  res.send(csv);
+});
+
 // ---- MILESTONES ----
 exports.getMilestones = catchAsync(async (req, res) => {
   const { page, limit, offset, search, sortBy, sortOrder } = buildPaginationQuery(req.query);
@@ -190,9 +205,9 @@ exports.exportTimesheetReport = catchAsync(async (req, res) => {
     page: 1, limit: 1000000,
   });
 
-  const csvHeader = 'Employee ID,Employee Name,Total Submitted Hours,Approved Hours,Billable Hours,Non-Billable Hours';
+  const csvHeader = 'Employee ID,Employee Name,Total Submitted Hours,Approved Hours,Billable Hours,Non-Billable Hours,Unapproved Hours';
   const csvRows = data.rows.map(r =>
-    `${r.employeeId},"${r.employeeName}",${r.totalSubmittedHours},${r.approvedHours},${r.billableHours},${r.nonBillableHours}`
+    `${r.employeeId},"${r.employeeName}",${r.totalSubmittedHours},${r.approvedHours},${r.billableHours},${r.nonBillableHours},${r.unapprovedHours}`
   );
   const csv = [csvHeader, ...csvRows].join('\n');
 
