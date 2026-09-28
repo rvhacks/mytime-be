@@ -4,6 +4,25 @@ const notificationService = require('./notificationService');
 const AppError = require('../utils/AppError');
 const { ENTRY_STATUS } = require('../constants');
 
+// Matches the frontend's BACKDATE_LIMIT_WEEKS in Timesheet.tsx — how far back an admin can
+// reopen an approved week for editing.
+const REOPEN_LIMIT_WEEKS = 8;
+
+/** Monday of the week containing `date`, in the server's local calendar (mirrors Timesheet.tsx's getMonday). */
+function getLocalMonday(date) {
+  const d = new Date(date);
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Format a Date as local "YYYY-MM-DD" — see adminService.js for why this matters (not `.toISOString()`). */
+function toLocalDateString(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 /**
  * Standard includes for loading a timesheet with all entry details.
  */
@@ -30,15 +49,20 @@ class TimesheetService {
       where: { user_id: userId, week_start_date: weekStartDate },
       include: TIMESHEET_INCLUDES,
     });
-    // Fallback: ±1 day range to handle timezone/date-format differences
+    // Fallback: ±1 day range to handle timezone/date-format differences.
+    // NOTE: format with local Y/M/D, not `.toISOString()` — that converts to UTC first, which
+    // on a server whose local timezone is ahead of UTC (e.g. IST) silently shifts this whole
+    // window a day earlier than intended.
     if (!ts) {
+      const toLocalDateString = (d) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const target = new Date(weekStartDate + 'T00:00:00');
       const dayBefore = new Date(target); dayBefore.setDate(dayBefore.getDate() - 1);
       const dayAfter = new Date(target); dayAfter.setDate(dayAfter.getDate() + 1);
       ts = await Timesheet.findOne({
         where: {
           user_id: userId,
-          week_start_date: { [Op.between]: [dayBefore.toISOString().slice(0, 10), dayAfter.toISOString().slice(0, 10)] },
+          week_start_date: { [Op.between]: [toLocalDateString(dayBefore), toLocalDateString(dayAfter)] },
         },
         include: TIMESHEET_INCLUDES,
       });
@@ -311,11 +335,7 @@ class TimesheetService {
         const employee = entry.timesheet?.user;
         if (!employee) throw new AppError('Employee not found', 404);
         if (employee.reporting_manager_id !== reviewerId) {
-          // Allow admin override
-          const reviewerUser = await User.findByPk(reviewerId, { transaction: t });
-          if (reviewerUser.role !== 'admin') {
-            throw new AppError('You are not the reporting manager of this employee', 403);
-          }
+          throw new AppError('You are not the reporting manager of this employee', 403);
         }
       }
 
@@ -356,10 +376,7 @@ class TimesheetService {
         const employee = entry.timesheet?.user;
         if (!employee) throw new AppError('Employee not found', 404);
         if (employee.reporting_manager_id !== reviewerId) {
-          const reviewerUser = await User.findByPk(reviewerId, { transaction: t });
-          if (reviewerUser.role !== 'admin') {
-            throw new AppError('You are not the reporting manager of this employee', 403);
-          }
+          throw new AppError('You are not the reporting manager of this employee', 403);
         }
       }
 
@@ -422,6 +439,52 @@ class TimesheetService {
       order: [['week_start_date', 'DESC']],
       ...options,
     });
+  }
+
+  // ===========================
+  // ADMIN: Reopen an approved week for editing
+  // ===========================
+
+  /**
+   * Admin-only. Reverts every 'approved' entry in the given employee's week back to 'draft' so
+   * the employee can edit and resubmit it. Only entries currently 'approved' are touched — any
+   * draft/submitted/rejected/recalled entry already sitting in the same week is left alone, since
+   * those are already editable (or already mid-workflow) on their own.
+   * Only allowed for weeks within the past REOPEN_LIMIT_WEEKS — enforced here, not just in the UI.
+   */
+  async reopenApprovedWeek(userId, weekStartDate) {
+    const thisMonday = getLocalMonday(new Date());
+    const earliestMonday = new Date(thisMonday);
+    earliestMonday.setDate(earliestMonday.getDate() - REOPEN_LIMIT_WEEKS * 7);
+    const earliestAllowed = toLocalDateString(earliestMonday);
+
+    if (weekStartDate < earliestAllowed) {
+      throw new AppError(`Only weeks within the past ${REOPEN_LIMIT_WEEKS} weeks can be reopened for editing`, 400);
+    }
+
+    const ts = await this.getTimesheetByWeek(userId, weekStartDate);
+    if (!ts) throw new AppError('No timesheet found for that week', 404);
+
+    const approvedEntries = (ts.entries || []).filter((e) => e.status === ENTRY_STATUS.APPROVED);
+    if (approvedEntries.length === 0) {
+      throw new AppError('This week has no approved entries to reopen', 400);
+    }
+
+    await TimesheetEntry.update(
+      {
+        status: ENTRY_STATUS.DRAFT,
+        reviewed_by: null,
+        reviewed_at: null,
+        review_comments: null,
+      },
+      { where: { id: { [Op.in]: approvedEntries.map((e) => e.id) } } }
+    );
+
+    try {
+      await notificationService.onTimesheetReopenedForEdit(userId, weekStartDate);
+    } catch { /* silent */ }
+
+    return this.getTimesheetByWeek(userId, weekStartDate);
   }
 
   // ===========================

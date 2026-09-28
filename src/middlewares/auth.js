@@ -63,4 +63,16 @@ const authorize = (...roles) => {
   };
 };
 
-module.exports = { authenticate, authorize };
+/**
+ * Block admins from an endpoint. Admins have view-only access to approvals,
+ * and can still be `isManager` if someone reports to them, so `authorize`
+ * alone is not enough.
+ */
+const forbidAdmin = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    return next(new AppError('Admins have view-only access to approvals', 403));
+  }
+  next();
+};
+
+module.exports = { authenticate, authorize, forbidAdmin };

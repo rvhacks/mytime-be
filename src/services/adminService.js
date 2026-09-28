@@ -8,6 +8,20 @@ const notificationService = require('./notificationService');
 const { generateAutoPassword, generateProjectCode, generateAutoColor } = require('../utils/helpers');
 const AppError = require('../utils/AppError');
 
+/**
+ * Format a Date as a local "YYYY-MM-DD" string — deliberately NOT `.toISOString().slice(0, 10)`,
+ * which converts to UTC first. On a server whose local timezone is ahead of UTC (e.g. IST,
+ * UTC+5:30), that conversion rolls local midnight back to the previous day, silently shifting
+ * "today"/month boundaries a day earlier. Used wherever we need "the 1st/last day of this month"
+ * in the server's own local calendar, not a date the browser already sent us.
+ */
+function toLocalDateString(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 class AdminService {
   // ---- DESIGNATIONS ----
   async getDesignations(options) { return designationRepository.findAll(options); }
@@ -292,6 +306,38 @@ class AdminService {
     return assignmentRepository.delete(id);
   }
 
+  /**
+   * Export: every employee (excluding admin) with their assigned projects
+   * as a comma-separated list, sorted alphabetically by name.
+   * Archived (soft-deleted) projects are excluded from the list, matching
+   * what the Assignments page itself shows.
+   */
+  async exportEmployeeAssignments() {
+    const { sequelize } = require('../infrastructure/models');
+    const { QueryTypes } = require('sequelize');
+
+    const rows = await sequelize.query(
+      `SELECT
+         u.employee_id,
+         u.first_name,
+         u.last_name,
+         COALESCE(STRING_AGG(p.name, ', ' ORDER BY p.name), '') AS project_names
+       FROM users u
+       LEFT JOIN project_assignments pa ON pa.user_id = u.id
+       LEFT JOIN projects p ON p.id = pa.project_id AND p.deleted_at IS NULL
+       WHERE u.role != 'admin'
+       GROUP BY u.id, u.employee_id, u.first_name, u.last_name
+       ORDER BY u.first_name ASC, u.last_name ASC`,
+      { type: QueryTypes.SELECT }
+    );
+
+    return rows.map(r => ({
+      employeeId: r.employee_id,
+      employeeName: `${r.first_name} ${r.last_name}`.trim(),
+      projects: r.project_names || '',
+    }));
+  }
+
   // ---- MILESTONES (Role-based templates) ----
   async getMilestones(options) {
     if (options.role) {
@@ -327,108 +373,92 @@ class AdminService {
   }
 
   // ---- DASHBOARD STATS ----
+  /**
+   * Hours are computed with the exact same date-range-aware, day-level-clipped SQL as
+   * getTimesheetReport() below, scoped to the current calendar month. This keeps the
+   * Dashboard's "Hours Logged" in sync with the Reports page's default (this month) view —
+   * they used to diverge because this method summed whole weeks with `week_start_date >=
+   * monthStart` (no upper bound, no day clipping), which double-counted/over-counted hours
+   * that fall in a week straddling the month boundary.
+   */
   async getDashboardStats(requestingUser) {
-    const { TimesheetEntry, Timesheet, User, Project, ProjectAssignment } = require('../infrastructure/models');
-    const { Op, fn, col, literal } = require('sequelize');
-
-    // Current month range: 1st of this month to today
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { TimesheetEntry, Timesheet, User, Project, ProjectAssignment, sequelize } = require('../infrastructure/models');
+    const { Op, QueryTypes } = require('sequelize');
 
     const isAdmin = requestingUser.role === 'admin';
     const userId = requestingUser.id;
 
+    const now = new Date();
+    const monthStart = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+    const monthEnd = toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
+    const dayColumns = [
+      { col: 'hours_mon', offset: 0 }, { col: 'hours_tue', offset: 1 }, { col: 'hours_wed', offset: 2 },
+      { col: 'hours_thu', offset: 3 }, { col: 'hours_fri', offset: 4 }, { col: 'hours_sat', offset: 5 },
+      { col: 'hours_sun', offset: 6 },
+    ];
+    const hoursSql = dayColumns.map(d =>
+      `(CASE WHEN (t.week_start_date + INTERVAL '${d.offset} days')::date >= :monthStart::date AND (t.week_start_date + INTERVAL '${d.offset} days')::date <= :monthEnd::date THEN COALESCE(te.${d.col}, 0) ELSE 0 END)`
+    ).join(' + ');
+
+    const replacements = { monthStart, monthEnd };
+    let userFilter = '';
     if (!isAdmin) {
-      // --- Employee personal stats ---
-      const userTimesheets = await Timesheet.findAll({
-        where: { user_id: userId, week_start_date: { [Op.gte]: monthStart } },
-        attributes: ['id'],
-        raw: true,
-      });
-      const tsIds = userTimesheets.map(t => t.id);
-      const nonDraftStatuses = ['submitted', 'resubmitted', 'approved', 'rejected'];
+      userFilter = ' AND u.id = :userId';
+      replacements.userId = userId;
+    }
 
-      const totalResult = await TimesheetEntry.findAll({
-        where: { timesheet_id: { [Op.in]: tsIds }, status: { [Op.in]: nonDraftStatuses } },
-        attributes: [[literal('COALESCE(SUM(hours_mon + hours_tue + hours_wed + hours_thu + hours_fri + hours_sat + hours_sun), 0)'), 'totalHours']],
-        raw: true,
-      });
-      const totalHoursLogged = parseFloat(totalResult[0]?.totalHours || 0);
+    const hoursQuery = `
+      SELECT
+        COALESCE(SUM(CASE WHEN te.status IN ('submitted','resubmitted','approved','rejected') THEN (${hoursSql}) ELSE 0 END), 0) AS total_hours,
+        -- Billable/non-billable are approved-only, matching the Reports page's definition —
+        -- billing status is only meaningful once a manager has confirmed the hours.
+        COALESCE(SUM(CASE WHEN te.status = 'approved' AND te.billable = true THEN (${hoursSql}) ELSE 0 END), 0) AS billable_hours,
+        COALESCE(SUM(CASE WHEN te.status = 'approved' AND te.billable = false THEN (${hoursSql}) ELSE 0 END), 0) AS non_billable_hours,
+        COALESCE(SUM(CASE WHEN te.status = 'approved' THEN (${hoursSql}) ELSE 0 END), 0) AS approved_hours,
+        COALESCE(SUM(CASE WHEN te.status IN ('submitted','resubmitted') THEN (${hoursSql}) ELSE 0 END), 0) AS unapproved_hours
+      FROM timesheet_entries te
+      JOIN timesheets t ON t.id = te.timesheet_id
+      JOIN users u ON u.id = t.user_id
+      WHERE u.role != 'admin'
+        AND t.week_start_date <= :monthEnd AND (t.week_start_date + INTERVAL '6 days')::date >= :monthStart::date
+        ${userFilter}`;
 
-      const billableResult = await TimesheetEntry.findAll({
-        where: { timesheet_id: { [Op.in]: tsIds }, status: { [Op.in]: nonDraftStatuses }, billable: true },
-        attributes: [[literal('COALESCE(SUM(hours_mon + hours_tue + hours_wed + hours_thu + hours_fri + hours_sat + hours_sun), 0)'), 'billableHours']],
-        raw: true,
-      });
-      const billableHours = parseFloat(billableResult[0]?.billableHours || 0);
-      const nonBillableHours = totalHoursLogged - billableHours;
+    const [hoursResult] = await sequelize.query(hoursQuery, { replacements, type: QueryTypes.SELECT });
 
-      const totalEntries = await TimesheetEntry.count({
-        where: { timesheet_id: { [Op.in]: tsIds }, status: { [Op.in]: nonDraftStatuses } },
-      });
-      const approvedEntries = await TimesheetEntry.count({
-        where: { timesheet_id: { [Op.in]: tsIds }, status: 'approved' },
-      });
-      const approvalRate = totalEntries > 0 ? Math.round((approvedEntries / totalEntries) * 100) : 0;
+    const totalHoursLogged = parseFloat(hoursResult.total_hours);
+    const billableHours = parseFloat(hoursResult.billable_hours);
+    const nonBillableHours = parseFloat(hoursResult.non_billable_hours);
+    const approvedHours = parseFloat(hoursResult.approved_hours);
+    const unapprovedHours = parseFloat(hoursResult.unapproved_hours);
 
-      const pendingApprovals = await TimesheetEntry.count({
-        where: { timesheet_id: { [Op.in]: tsIds }, status: 'submitted' },
-      });
+    // Pending-approval backlog (entry count): NOT month-scoped on purpose — this mirrors the
+    // manager/admin approval queues, which also surface the full backlog regardless of when the
+    // entry was submitted. Includes 'resubmitted' so it matches those same queues.
+    const pendingApprovals = await TimesheetEntry.count({
+      where: { status: { [Op.in]: ['submitted', 'resubmitted'] } },
+      ...(!isAdmin
+        ? { include: [{ model: Timesheet, as: 'timesheet', where: { user_id: userId }, attributes: [] }] }
+        : {}),
+    });
 
+    if (!isAdmin) {
       const activeProjects = await ProjectAssignment.count({ where: { user_id: userId } });
-
       return {
         totalEmployees: 0, // not relevant for employee view
         activeProjects,
         totalHoursLogged,
         billableHours,
         nonBillableHours,
-        approvalRate,
+        approvedHours,
+        unapprovedHours,
         pendingApprovals,
         isPersonal: true,
       };
     }
 
-    // --- Admin company-wide stats ---
     const totalEmployees = await User.count({ where: { status: 'active', role: { [Op.ne]: 'admin' } } });
     const activeProjects = await Project.count({ where: { status: 'active' } });
-    const nonDraftStatuses = ['submitted', 'resubmitted', 'approved', 'rejected'];
-
-    const totalResult = await TimesheetEntry.findAll({
-      where: { status: { [Op.in]: nonDraftStatuses } },
-      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: monthStart } }, attributes: [] }],
-      attributes: [[literal('COALESCE(SUM(hours_mon + hours_tue + hours_wed + hours_thu + hours_fri + hours_sat + hours_sun), 0)'), 'totalHours']],
-      raw: true,
-    });
-    const totalHoursLogged = parseFloat(totalResult[0]?.totalHours || 0);
-
-    const billableResult = await TimesheetEntry.findAll({
-      where: { status: { [Op.in]: nonDraftStatuses }, billable: true },
-      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: monthStart } }, attributes: [] }],
-      attributes: [[literal('COALESCE(SUM(hours_mon + hours_tue + hours_wed + hours_thu + hours_fri + hours_sat + hours_sun), 0)'), 'billableHours']],
-      raw: true,
-    });
-    const billableHours = parseFloat(billableResult[0]?.billableHours || 0);
-
-    const nonBillableResult = await TimesheetEntry.findAll({
-      where: { status: { [Op.in]: nonDraftStatuses }, billable: false },
-      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: monthStart } }, attributes: [] }],
-      attributes: [[literal('COALESCE(SUM(hours_mon + hours_tue + hours_wed + hours_thu + hours_fri + hours_sat + hours_sun), 0)'), 'nonBillableHours']],
-      raw: true,
-    });
-    const nonBillableHours = parseFloat(nonBillableResult[0]?.nonBillableHours || 0);
-
-    const totalEntries = await TimesheetEntry.count({
-      where: { status: { [Op.in]: nonDraftStatuses } },
-      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: monthStart } }, attributes: [] }],
-    });
-    const approvedEntries = await TimesheetEntry.count({
-      where: { status: 'approved' },
-      include: [{ model: Timesheet, as: 'timesheet', where: { week_start_date: { [Op.gte]: monthStart } }, attributes: [] }],
-    });
-    const approvalRate = totalEntries > 0 ? Math.round((approvedEntries / totalEntries) * 100) : 0;
-
-    const pendingApprovals = await TimesheetEntry.count({ where: { status: 'submitted' } });
 
     return {
       totalEmployees,
@@ -436,7 +466,8 @@ class AdminService {
       totalHoursLogged,
       billableHours,
       nonBillableHours,
-      approvalRate,
+      approvedHours,
+      unapprovedHours,
       pendingApprovals,
       isPersonal: false,
     };
@@ -576,13 +607,13 @@ class AdminService {
   }
 
   // ---- REPORTS ----
-  async getTimesheetReport({ startDate, endDate, employeeId, projectId, selectedEmployeeIds, maxApprovedHours, page = 1, limit = 20 }) {
+  async getTimesheetReport({ startDate, endDate, employeeId, projectId, selectedEmployeeIds, maxApprovedHours, managerId, page = 1, limit = 20 }) {
     const { sequelize } = require('../infrastructure/models');
     const { QueryTypes } = require('sequelize');
 
     const now = new Date();
-    if (!startDate) startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-    if (!endDate) endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+    if (!startDate) startDate = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+    if (!endDate) endDate = toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
     // Build date-range-aware hours SQL: only count a day's hours if that day falls within [startDate, endDate]
     // week_start_date is Monday, so: mon=+0, tue=+1, wed=+2, thu=+3, fri=+4, sat=+5, sun=+6
@@ -606,15 +637,45 @@ class AdminService {
     const replacements = { startDate, endDate };
 
     if (projectId) {
-      teConds += ` AND te.project_id = :projectId`;
-      replacements.projectId = projectId;
+      // Accepts a single id or a comma-separated list (multi-select filter) — IN() works fine
+      // for a single value too, so there's no need to special-case the count.
+      const projectIds = Array.isArray(projectId) ? projectId : String(projectId).split(',').map((s) => s.trim()).filter(Boolean);
+      if (projectIds.length > 0) {
+        teConds += ` AND te.project_id IN (:projectIds)`;
+        replacements.projectIds = projectIds;
+      }
     }
 
-    // User-level WHERE
-    let userWhere = `u.role != 'admin' AND u.status = 'active'`;
+    // User-level WHERE: always show currently-active employees (even with 0 hours in range),
+    // PLUS anyone who has qualifying entries in this exact date range even if they were later
+    // deactivated — otherwise hours genuinely submitted while active vanish retroactively from
+    // a report covering the period when they submitted them (the "active" filter is meant to
+    // control headcount, not erase history). Past Submitted Timesheets already works this way.
+    let userWhere = `u.role != 'admin' AND (
+      u.status = 'active'
+      OR EXISTS (
+        SELECT 1 FROM timesheets t2
+        JOIN timesheet_entries te2 ON te2.timesheet_id = t2.id
+        WHERE t2.user_id = u.id
+          AND te2.status IN ('submitted', 'resubmitted', 'approved', 'rejected')
+          AND t2.week_start_date <= :endDate
+          AND (t2.week_start_date + INTERVAL '6 days')::date >= :startDate::date
+      )
+    )`;
+    // Manager scope: the manager's own hours, plus their direct reports. Used by the
+    // manager-facing "team report" endpoints, which reuse this exact function so their numbers
+    // are always defined identically to the admin Employee Summary report.
+    if (managerId) {
+      userWhere += ` AND (u.id = :managerId OR u.reporting_manager_id = :managerId)`;
+      replacements.managerId = managerId;
+    }
     if (employeeId) {
-      userWhere += ` AND u.id = :employeeId`;
-      replacements.employeeId = employeeId;
+      // Accepts a single id or a comma-separated list (multi-select filter)
+      const employeeIds = Array.isArray(employeeId) ? employeeId : String(employeeId).split(',').map((s) => s.trim()).filter(Boolean);
+      if (employeeIds.length > 0) {
+        userWhere += ` AND u.id IN (:employeeIds)`;
+        replacements.employeeIds = employeeIds;
+      }
     }
     if (selectedEmployeeIds && selectedEmployeeIds.length > 0) {
       userWhere += ` AND u.employee_id IN (:selectedEmployeeIds)`;
@@ -633,6 +694,7 @@ class AdminService {
       SELECT
         COALESCE(SUM(${hoursSql}), 0) AS total_submitted_hours,
         COALESCE(SUM(CASE WHEN te.status = 'approved' THEN (${hoursSql}) ELSE 0 END), 0) AS approved_hours,
+        COALESCE(SUM(CASE WHEN te.status IN ('submitted', 'resubmitted') THEN (${hoursSql}) ELSE 0 END), 0) AS unapproved_hours,
         COALESCE(SUM(CASE WHEN te.status = 'approved' AND te.billable = true THEN (${hoursSql}) ELSE 0 END), 0) AS billable_hours,
         COALESCE(SUM(CASE WHEN te.status = 'approved' AND te.billable = false THEN (${hoursSql}) ELSE 0 END), 0) AS non_billable_hours
       ${baseSql}`;
@@ -667,6 +729,7 @@ class AdminService {
         u.last_name,
         COALESCE(SUM(${hoursSql}), 0) AS total_submitted_hours,
         COALESCE(SUM(CASE WHEN te.status = 'approved' THEN (${hoursSql}) ELSE 0 END), 0) AS approved_hours,
+        COALESCE(SUM(CASE WHEN te.status IN ('submitted', 'resubmitted') THEN (${hoursSql}) ELSE 0 END), 0) AS unapproved_hours,
         COALESCE(SUM(CASE WHEN te.status = 'approved' AND te.billable = true THEN (${hoursSql}) ELSE 0 END), 0) AS billable_hours,
         COALESCE(SUM(CASE WHEN te.status = 'approved' AND te.billable = false THEN (${hoursSql}) ELSE 0 END), 0) AS non_billable_hours
       ${baseSql}
@@ -684,6 +747,10 @@ class AdminService {
       summary: {
         totalSubmittedHours: parseFloat(summaryResult.total_submitted_hours),
         approvedHours: parseFloat(summaryResult.approved_hours),
+        // Same definition as the Dashboard's "Unapproved Hours" card: submitted + resubmitted
+        // only. Rejected hours are excluded — they've already been reviewed and are waiting on
+        // the employee to resubmit, not on a manager's approval decision.
+        unapprovedHours: parseFloat(summaryResult.unapproved_hours),
         billableHours: parseFloat(summaryResult.billable_hours),
         nonBillableHours: parseFloat(summaryResult.non_billable_hours),
       },
@@ -692,6 +759,7 @@ class AdminService {
         employeeName: `${r.first_name} ${r.last_name}`,
         totalSubmittedHours: parseFloat(r.total_submitted_hours),
         approvedHours: parseFloat(r.approved_hours),
+        unapprovedHours: parseFloat(r.unapproved_hours),
         billableHours: parseFloat(r.billable_hours),
         nonBillableHours: parseFloat(r.non_billable_hours),
       })),
@@ -733,17 +801,23 @@ class AdminService {
       replacements.endDate = endDate;
     }
     if (employeeId) {
-      // Support both UUID and employee_id format (e.g. CT26-0001)
-      if (employeeId.match(/^[0-9a-f]{8}-/i)) {
-        whereClauses += ` AND u.id = :employeeId`;
-      } else {
-        whereClauses += ` AND u.employee_id = :employeeId`;
+      // Accepts a single id or a comma-separated list (multi-select filter). Also supports
+      // both UUID and employee_id format (e.g. CT26-0001) — the deep-link "view this employee"
+      // links elsewhere in the app pass the employee_id string, not the UUID — detected from
+      // the first id in the list (a request never mixes both formats in practice).
+      const employeeIds = Array.isArray(employeeId) ? employeeId : String(employeeId).split(',').map((s) => s.trim()).filter(Boolean);
+      if (employeeIds.length > 0) {
+        const isUuid = /^[0-9a-f]{8}-/i.test(employeeIds[0]);
+        whereClauses += isUuid ? ` AND u.id IN (:employeeIds)` : ` AND u.employee_id IN (:employeeIds)`;
+        replacements.employeeIds = employeeIds;
       }
-      replacements.employeeId = employeeId;
     }
     if (projectId) {
-      whereClauses += ` AND te.project_id = :projectId`;
-      replacements.projectId = projectId;
+      const projectIds = Array.isArray(projectId) ? projectId : String(projectId).split(',').map((s) => s.trim()).filter(Boolean);
+      if (projectIds.length > 0) {
+        whereClauses += ` AND te.project_id IN (:projectIds)`;
+        replacements.projectIds = projectIds;
+      }
     }
 
     const baseSql = `

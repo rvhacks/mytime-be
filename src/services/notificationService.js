@@ -122,6 +122,15 @@ class NotificationService {
       category: 'timesheet',
     });
   }
+
+  async onTimesheetReopenedForEdit(userId, weekStart) {
+    await this.notify(userId, {
+      title: 'Timesheet Reopened for Editing',
+      message: `Your approved timesheet for week of ${weekStart} has been reopened by an admin. Please review, edit and resubmit it.`,
+      type: 'warning',
+      category: 'timesheet',
+    });
+  }
 }
 
 module.exports = new NotificationService();

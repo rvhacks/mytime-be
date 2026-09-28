@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const tc = require('../controllers/timesheetController');
-const { authenticate, authorize } = require('../middlewares/auth');
+const { authenticate, authorize, forbidAdmin } = require('../middlewares/auth');
 
 router.use(authenticate);
 
@@ -24,14 +24,18 @@ router.get('/milestones/role/:role', tc.getMilestonesByRole);
 router.get('/project/:projectId', tc.getProjectDetail);
 
 // ---- Manager approvals (dynamic isManager check) ----
-router.get('/approvals', authorize('manager', 'admin'), tc.getPendingApprovals);
-router.post('/approvals/action', authorize('manager', 'admin'), tc.approvalAction);
+// Admins are view-only: they use /api/admin/approvals/* to track, never to act.
+router.get('/approvals', forbidAdmin, authorize('manager'), tc.getPendingApprovals);
+router.post('/approvals/action', forbidAdmin, authorize('manager'), tc.approvalAction);
 
 // ---- RM/Admin: view employee's specific week timesheet (read-only) ----
 router.get('/employee/:employeeId/week', tc.viewEmployeeWeekTimesheet);
 
 // ---- Admin: view employee timesheets ----
 router.get('/employee/:employeeId', authorize('admin'), tc.getEmployeeTimesheets);
+
+// ---- Admin: reopen an approved week for editing (past N weeks only, enforced server-side) ----
+router.post('/employee/:employeeId/week/reopen', authorize('admin'), tc.reopenApprovedWeek);
 
 // ---- Reports ----
 router.get('/reports', tc.getReports);

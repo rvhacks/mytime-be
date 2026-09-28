@@ -41,6 +41,7 @@ router.delete('/projects/:id', adminController.deleteProject);
 
 // Assignments
 router.get('/assignments', adminController.getAssignments);
+router.get('/assignments/export', adminController.exportEmployeeAssignments);
 router.post('/assignments', validate(createAssignmentSchema), adminController.createAssignment);
 router.delete('/assignments/:id', adminController.deleteAssignment);
 

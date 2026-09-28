@@ -119,8 +119,12 @@ class UserService {
       replacements.endDate = endDate;
     }
     if (projectId) {
-      whereClauses += ` AND te.project_id = :projectId`;
-      replacements.projectId = projectId;
+      // Accepts a single id or a comma-separated list (multi-select filter)
+      const projectIds = Array.isArray(projectId) ? projectId : String(projectId).split(',').map((s) => s.trim()).filter(Boolean);
+      if (projectIds.length > 0) {
+        whereClauses += ` AND te.project_id IN (:projectIds)`;
+        replacements.projectIds = projectIds;
+      }
     }
 
     const baseSql = `

@@ -1,5 +1,6 @@
 const catchAsync = require('../utils/catchAsync');
 const userService = require('../services/userService');
+const adminService = require('../services/adminService');
 
 exports.getProfile = catchAsync(async (req, res) => {
   const data = await userService.getProfile(req.user.id);
@@ -50,4 +51,45 @@ exports.getMyTeam = catchAsync(async (req, res) => {
   const { projectId } = req.query;
   const data = await userService.getMyTeam(req.user.id, projectId);
   res.json({ status: 'success', data });
+});
+
+// ===========================
+// MANAGER: Team report (same shape as the admin Employee Summary report,
+// scoped to this manager's direct reports only)
+// ===========================
+
+exports.getTeamReport = catchAsync(async (req, res) => {
+  if (!req.user.isManager) {
+    return res.status(403).json({ status: 'fail', message: 'Only managers can view a team report' });
+  }
+  const { startDate, endDate, employeeId, projectId, maxApprovedHours } = req.query;
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 20;
+  const data = await adminService.getTimesheetReport({
+    startDate, endDate, employeeId, projectId, maxApprovedHours,
+    managerId: req.user.id, page, limit,
+  });
+  res.json({ status: 'success', data });
+});
+
+exports.exportTeamReport = catchAsync(async (req, res) => {
+  if (!req.user.isManager) {
+    return res.status(403).json({ status: 'fail', message: 'Only managers can export a team report' });
+  }
+  const { startDate, endDate, employeeId, projectId, selectedEmployeeIds, maxApprovedHours } = req.query;
+  const data = await adminService.getTimesheetReport({
+    startDate, endDate, employeeId, projectId, maxApprovedHours,
+    selectedEmployeeIds: selectedEmployeeIds ? selectedEmployeeIds.split(',') : null,
+    managerId: req.user.id, page: 1, limit: 1000000,
+  });
+
+  const csvHeader = 'Employee ID,Employee Name,Total Submitted Hours,Approved Hours,Billable Hours,Non-Billable Hours,Unapproved Hours';
+  const csvRows = data.rows.map(r =>
+    `${r.employeeId},"${r.employeeName}",${r.totalSubmittedHours},${r.approvedHours},${r.billableHours},${r.nonBillableHours},${r.unapprovedHours}`
+  );
+  const csv = [csvHeader, ...csvRows].join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="team-timesheet-summary.csv"');
+  res.send(csv);
 });
